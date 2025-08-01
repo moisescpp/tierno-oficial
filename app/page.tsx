@@ -16,6 +16,9 @@ import {
   Loader2,
   CheckCircle,
   AlertCircle,
+  Calendar,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -49,7 +52,7 @@ interface Order {
   phone?: string
   notes?: string
   totalAmount: number
-  createdAt?: string
+  createdAt: string
 }
 
 const PRODUCTS = [
@@ -64,12 +67,38 @@ const PRODUCTS = [
 
 const DAYS_OF_WEEK = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"]
 
+// Función para obtener el inicio de la semana (lunes)
+const getWeekStart = (date: Date): Date => {
+  const d = new Date(date)
+  const day = d.getDay()
+  const diff = d.getDate() - day + (day === 0 ? -6 : 1) // Ajustar para que lunes sea el primer día
+  return new Date(d.setDate(diff))
+}
+
+// Función para formatear la semana
+const formatWeek = (weekStart: Date): string => {
+  const weekEnd = new Date(weekStart)
+  weekEnd.setDate(weekStart.getDate() + 6)
+
+  const startMonth = weekStart.toLocaleDateString("es-CO", { month: "short", day: "numeric" })
+  const endMonth = weekEnd.toLocaleDateString("es-CO", { month: "short", day: "numeric" })
+
+  return `${startMonth} - ${endMonth}`
+}
+
+// Función para obtener la clave de la semana
+const getWeekKey = (date: string): string => {
+  const d = new Date(date + "T00:00:00")
+  const weekStart = getWeekStart(d)
+  return weekStart.toISOString().split("T")[0]
+}
+
 export default function ArepaDeliveryManager() {
   const [orders, setOrders] = useState<Order[]>([])
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [isRouteDialogOpen, setIsRouteDialogOpen] = useState(false)
   const [editingOrder, setEditingOrder] = useState<Order | null>(null)
-  const [selectedDay, setSelectedDay] = useState<string>("")
+  const [selectedWeek, setSelectedWeek] = useState<string>("")
   const [draggedOrder, setDraggedOrder] = useState<string | null>(null)
   const [routeOrders, setRouteOrders] = useState<Order[]>([])
   const [loading, setLoading] = useState(true)
@@ -92,10 +121,9 @@ export default function ArepaDeliveryManager() {
   useEffect(() => {
     loadOrders()
 
-    // Sincronizar cada 5 segundos cuando no está en un modal
     const interval = setInterval(() => {
       if (!isDialogOpen && !isRouteDialogOpen && !saving) {
-        loadOrders(true) // true = silencioso
+        loadOrders(true)
       }
     }, 5000)
 
@@ -110,16 +138,27 @@ export default function ArepaDeliveryManager() {
 
       if (response.ok) {
         const data = await response.json()
-        setOrders(data.orders || [])
+        const loadedOrders = data.orders || []
+
+        // Solo actualizar si hay cambios reales
+        if (JSON.stringify(loadedOrders) !== JSON.stringify(orders)) {
+          setOrders(loadedOrders)
+          // Backup en localStorage
+          localStorage.setItem("arepa-orders", JSON.stringify(loadedOrders))
+        }
         setIsConnected(true)
       } else {
         throw new Error("Error de servidor")
       }
     } catch (err) {
-      // Usar localStorage como backup
-      const savedOrders = localStorage.getItem("arepa-orders")
-      if (savedOrders && orders.length === 0) {
-        setOrders(JSON.parse(savedOrders))
+      console.error("Error loading orders:", err)
+      // Usar localStorage como backup solo si no hay datos
+      if (orders.length === 0) {
+        const savedOrders = localStorage.getItem("arepa-orders")
+        if (savedOrders) {
+          const parsedOrders = JSON.parse(savedOrders)
+          setOrders(parsedOrders)
+        }
       }
       setIsConnected(false)
     } finally {
@@ -139,18 +178,24 @@ export default function ArepaDeliveryManager() {
 
       if (response.ok) {
         const data = await response.json()
-        setOrders(data.orders || [])
+        const updatedOrders = data.orders || []
+        setOrders(updatedOrders)
         setIsConnected(true)
-        localStorage.setItem("arepa-orders", JSON.stringify(data.orders || []))
+        localStorage.setItem("arepa-orders", JSON.stringify(updatedOrders))
       } else {
         throw new Error("Error al guardar")
       }
     } catch (err) {
-      // Guardar localmente si falla
-      const currentOrders = orders.filter((o) => o.id !== order.id)
-      const updatedOrders = [...currentOrders, order]
-      localStorage.setItem("arepa-orders", JSON.stringify(updatedOrders))
-      setOrders(updatedOrders)
+      console.error("Error saving order:", err)
+      // Guardar localmente si falla la conexión
+      setOrders((prevOrders) => {
+        const filteredOrders = prevOrders.filter((o) => o.id !== order.id)
+        const updatedOrders = [...filteredOrders, order].sort(
+          (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+        )
+        localStorage.setItem("arepa-orders", JSON.stringify(updatedOrders))
+        return updatedOrders
+      })
       setIsConnected(false)
     } finally {
       setSaving(false)
@@ -171,13 +216,17 @@ export default function ArepaDeliveryManager() {
 
       if (response.ok) {
         const data = await response.json()
-        setOrders(data.orders || [])
-        localStorage.setItem("arepa-orders", JSON.stringify(data.orders || []))
+        const updatedOrders = data.orders || []
+        setOrders(updatedOrders)
+        localStorage.setItem("arepa-orders", JSON.stringify(updatedOrders))
       }
     } catch (err) {
-      const updatedOrders = orders.filter((order) => order.id !== orderId)
-      localStorage.setItem("arepa-orders", JSON.stringify(updatedOrders))
-      setOrders(updatedOrders)
+      console.error("Error deleting order:", err)
+      setOrders((prevOrders) => {
+        const updatedOrders = prevOrders.filter((order) => order.id !== orderId)
+        localStorage.setItem("arepa-orders", JSON.stringify(updatedOrders))
+        return updatedOrders
+      })
     } finally {
       setSaving(false)
     }
@@ -251,11 +300,12 @@ export default function ArepaDeliveryManager() {
       return
     }
 
-    const dayOrders = orders.filter((order) => order.deliveryDate === newOrder.deliveryDate)
+    const weekOrders = getOrdersByWeek(getWeekKey(newOrder.deliveryDate!))
+    const dayOrders = weekOrders.filter((order) => order.deliveryDate === newOrder.deliveryDate)
     const maxRouteOrder = Math.max(...dayOrders.map((order) => order.routeOrder), 0)
 
     const orderToSave: Order = {
-      id: editingOrder?.id || Date.now().toString(),
+      id: editingOrder?.id || `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       customerName: newOrder.customerName!,
       address: newOrder.address!,
       deliveryTime: newOrder.deliveryTime!,
@@ -315,12 +365,23 @@ export default function ArepaDeliveryManager() {
     }
   }
 
+  // Funciones para manejo de semanas
+  const getOrdersByWeek = (weekKey: string) => {
+    return orders.filter((order) => getWeekKey(order.deliveryDate) === weekKey)
+  }
+
   const getOrdersByDate = (date: string) => {
     return orders.filter((order) => order.deliveryDate === date).sort((a, b) => a.routeOrder - b.routeOrder)
   }
 
-  const getUniqueDates = () => {
-    const dates = [...new Set(orders.map((order) => order.deliveryDate))].sort()
+  const getUniqueWeeks = () => {
+    const weeks = [...new Set(orders.map((order) => getWeekKey(order.deliveryDate)))].sort().reverse()
+    return weeks
+  }
+
+  const getUniqueDatesInWeek = (weekKey: string) => {
+    const weekOrders = getOrdersByWeek(weekKey)
+    const dates = [...new Set(weekOrders.map((order) => order.deliveryDate))].sort()
     return dates
   }
 
@@ -332,6 +393,19 @@ export default function ArepaDeliveryManager() {
       month: "long",
     })
     return `${dayName.charAt(0).toUpperCase() + dayName.slice(1)} ${formattedDate}`
+  }
+
+  const getTotalsByWeek = (weekKey: string) => {
+    const weekOrders = getOrdersByWeek(weekKey)
+    const total = weekOrders.reduce((sum, order) => sum + order.totalAmount, 0)
+    const delivered = weekOrders.filter((order) => order.isDelivered).reduce((sum, order) => sum + order.totalAmount, 0)
+    return {
+      total,
+      delivered,
+      pending: total - delivered,
+      totalOrders: weekOrders.length,
+      deliveredOrders: weekOrders.filter((order) => order.isDelivered).length,
+    }
   }
 
   const getTotalsByDate = (date: string) => {
@@ -519,7 +593,14 @@ export default function ArepaDeliveryManager() {
     )
   }
 
-  const uniqueDates = getUniqueDates()
+  const uniqueWeeks = getUniqueWeeks()
+
+  // Seleccionar la semana actual por defecto
+  useEffect(() => {
+    if (uniqueWeeks.length > 0 && !selectedWeek) {
+      setSelectedWeek(uniqueWeeks[0])
+    }
+  }, [uniqueWeeks, selectedWeek])
 
   if (loading) {
     return (
@@ -855,7 +936,7 @@ export default function ArepaDeliveryManager() {
           </DialogContent>
         </Dialog>
 
-        {uniqueDates.length === 0 ? (
+        {uniqueWeeks.length === 0 ? (
           <Card>
             <CardContent className="text-center py-8">
               <p className="text-gray-500">No hay pedidos programados</p>
@@ -863,92 +944,163 @@ export default function ArepaDeliveryManager() {
             </CardContent>
           </Card>
         ) : (
-          <Tabs value={selectedDay} onValueChange={setSelectedDay} className="w-full">
-            <TabsList
-              className="grid w-full"
-              style={{ gridTemplateColumns: `repeat(${Math.min(uniqueDates.length, 4)}, 1fr)` }}
-            >
-              {uniqueDates.slice(0, 4).map((date) => {
-                const totals = getTotalsByDate(date)
+          <div className="space-y-6">
+            {/* Navegación de semanas */}
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="flex items-center gap-2">
+                    <Calendar className="w-5 h-5" />
+                    Portafolio Semanal
+                  </CardTitle>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        const currentIndex = uniqueWeeks.indexOf(selectedWeek)
+                        if (currentIndex < uniqueWeeks.length - 1) {
+                          setSelectedWeek(uniqueWeeks[currentIndex + 1])
+                        }
+                      }}
+                      disabled={uniqueWeeks.indexOf(selectedWeek) >= uniqueWeeks.length - 1}
+                    >
+                      <ChevronLeft className="w-4 h-4" />
+                      Anterior
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        const currentIndex = uniqueWeeks.indexOf(selectedWeek)
+                        if (currentIndex > 0) {
+                          setSelectedWeek(uniqueWeeks[currentIndex - 1])
+                        }
+                      }}
+                      disabled={uniqueWeeks.indexOf(selectedWeek) <= 0}
+                    >
+                      Siguiente
+                      <ChevronRight className="w-4 h-4" />
+                    </Button>
+                  </div>
+                </div>
+              </CardHeader>
+            </Card>
+
+            {/* Tabs de semanas */}
+            <Tabs value={selectedWeek} onValueChange={setSelectedWeek} className="w-full">
+              <TabsList
+                className="grid w-full"
+                style={{ gridTemplateColumns: `repeat(${Math.min(uniqueWeeks.length, 3)}, 1fr)` }}
+              >
+                {uniqueWeeks.slice(0, 3).map((weekKey) => {
+                  const weekStart = new Date(weekKey + "T00:00:00")
+                  const totals = getTotalsByWeek(weekKey)
+                  return (
+                    <TabsTrigger key={weekKey} value={weekKey} className="flex flex-col items-center gap-1 p-3">
+                      <span className="text-sm font-medium">Semana {formatWeek(weekStart)}</span>
+                      <div className="flex gap-2">
+                        <Badge variant="secondary" className="text-xs">
+                          {totals.totalOrders} pedidos
+                        </Badge>
+                        <Badge variant="outline" className="text-xs">
+                          ${totals.total.toLocaleString()}
+                        </Badge>
+                      </div>
+                    </TabsTrigger>
+                  )
+                })}
+              </TabsList>
+
+              {uniqueWeeks.map((weekKey) => {
+                const weekStart = new Date(weekKey + "T00:00:00")
+                const weekTotals = getTotalsByWeek(weekKey)
+                const datesInWeek = getUniqueDatesInWeek(weekKey)
+
                 return (
-                  <TabsTrigger key={date} value={date} className="flex flex-col items-center gap-1 p-3">
-                    <span className="text-sm font-medium">{formatDate(date)}</span>
-                    <div className="flex gap-2">
-                      <Badge variant="secondary" className="text-xs">
-                        {getOrdersByDate(date).length} pedidos
-                      </Badge>
-                      <Badge variant="outline" className="text-xs">
-                        ${totals.total.toLocaleString()}
-                      </Badge>
+                  <TabsContent key={weekKey} value={weekKey} className="mt-6">
+                    <div className="space-y-6">
+                      {/* Resumen de la semana */}
+                      <Card className="bg-gradient-to-r from-blue-50 to-purple-50">
+                        <CardHeader>
+                          <CardTitle className="text-xl">Semana del {formatWeek(weekStart)}</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                            <div className="text-center">
+                              <div className="text-2xl font-bold text-blue-600">{weekTotals.totalOrders}</div>
+                              <div className="text-sm text-gray-600">Total Pedidos</div>
+                            </div>
+                            <div className="text-center">
+                              <div className="text-2xl font-bold text-green-600">
+                                ${weekTotals.total.toLocaleString()}
+                              </div>
+                              <div className="text-sm text-gray-600">Ventas Totales</div>
+                            </div>
+                            <div className="text-center">
+                              <div className="text-2xl font-bold text-emerald-600">
+                                ${weekTotals.delivered.toLocaleString()}
+                              </div>
+                              <div className="text-sm text-gray-600">Ya Cobrado</div>
+                            </div>
+                            <div className="text-center">
+                              <div className="text-2xl font-bold text-orange-600">
+                                ${weekTotals.pending.toLocaleString()}
+                              </div>
+                              <div className="text-sm text-gray-600">Por Cobrar</div>
+                            </div>
+                            <div className="text-center">
+                              <div className="text-2xl font-bold text-purple-600">
+                                {weekTotals.deliveredOrders}/{weekTotals.totalOrders}
+                              </div>
+                              <div className="text-sm text-gray-600">Entregados</div>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+
+                      {/* Pedidos por día */}
+                      {datesInWeek.map((date) => {
+                        const dayOrders = getOrdersByDate(date)
+                        const dayTotals = getTotalsByDate(date)
+
+                        return (
+                          <div key={date} className="space-y-4">
+                            <div className="flex items-center justify-between">
+                              <h3 className="text-lg font-semibold">{formatDate(date)}</h3>
+                              <div className="flex items-center gap-4">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => openRouteOrganizer(date)}
+                                  className="flex items-center gap-2"
+                                  disabled={saving}
+                                >
+                                  <Route className="w-4 h-4" />
+                                  Organizar Ruta
+                                </Button>
+                                <div className="text-sm text-gray-600">
+                                  {dayOrders.filter((order) => order.isDelivered).length} de {dayOrders.length}{" "}
+                                  entregados
+                                </div>
+                                <Badge variant="outline" className="text-sm">
+                                  ${dayTotals.total.toLocaleString()}
+                                </Badge>
+                              </div>
+                            </div>
+
+                            {dayOrders.map((order) => (
+                              <OrderCard key={order.id} order={order} dayOrders={dayOrders} />
+                            ))}
+                          </div>
+                        )
+                      })}
                     </div>
-                  </TabsTrigger>
+                  </TabsContent>
                 )
               })}
-            </TabsList>
-
-            {uniqueDates.map((date) => {
-              const dayOrders = getOrdersByDate(date)
-              const totals = getTotalsByDate(date)
-
-              return (
-                <TabsContent key={date} value={date} className="mt-6">
-                  <div className="space-y-4">
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-                      <Card>
-                        <CardContent className="p-4">
-                          <div className="text-2xl font-bold text-blue-600">{dayOrders.length}</div>
-                          <div className="text-sm text-gray-600">Total Pedidos</div>
-                        </CardContent>
-                      </Card>
-                      <Card>
-                        <CardContent className="p-4">
-                          <div className="text-2xl font-bold text-green-600">${totals.total.toLocaleString()}</div>
-                          <div className="text-sm text-gray-600">Ventas Totales</div>
-                        </CardContent>
-                      </Card>
-                      <Card>
-                        <CardContent className="p-4">
-                          <div className="text-2xl font-bold text-emerald-600">
-                            ${totals.delivered.toLocaleString()}
-                          </div>
-                          <div className="text-sm text-gray-600">Ya Cobrado</div>
-                        </CardContent>
-                      </Card>
-                      <Card>
-                        <CardContent className="p-4">
-                          <div className="text-2xl font-bold text-orange-600">${totals.pending.toLocaleString()}</div>
-                          <div className="text-sm text-gray-600">Por Cobrar</div>
-                        </CardContent>
-                      </Card>
-                    </div>
-
-                    <div className="flex items-center justify-between">
-                      <h2 className="text-xl font-semibold">Entregas del {formatDate(date)}</h2>
-                      <div className="flex items-center gap-4">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => openRouteOrganizer(date)}
-                          className="flex items-center gap-2"
-                          disabled={saving}
-                        >
-                          <Route className="w-4 h-4" />
-                          Organizar Ruta
-                        </Button>
-                        <div className="text-sm text-gray-600">
-                          {dayOrders.filter((order) => order.isDelivered).length} de {dayOrders.length} entregados
-                        </div>
-                      </div>
-                    </div>
-
-                    {dayOrders.map((order) => (
-                      <OrderCard key={order.id} order={order} dayOrders={dayOrders} />
-                    ))}
-                  </div>
-                </TabsContent>
-              )
-            })}
-          </Tabs>
+            </Tabs>
+          </div>
         )}
       </div>
     </div>
