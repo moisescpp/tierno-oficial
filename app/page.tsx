@@ -14,9 +14,8 @@ import {
   GripVertical,
   Route,
   Loader2,
-  AlertCircle,
   CheckCircle,
-  RefreshCw,
+  AlertCircle,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -27,7 +26,6 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
-import { Alert, AlertDescription } from "@/components/ui/alert"
 
 interface Product {
   name: string
@@ -76,9 +74,8 @@ export default function ArepaDeliveryManager() {
   const [routeOrders, setRouteOrders] = useState<Order[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [connectionStatus, setConnectionStatus] = useState<"connected" | "local" | "error">("local")
-  const [lastSync, setLastSync] = useState<Date | null>(null)
+  const [isConnected, setIsConnected] = useState(false)
+
   const [newOrder, setNewOrder] = useState<Partial<Order>>({
     customerName: "",
     address: "",
@@ -91,114 +88,93 @@ export default function ArepaDeliveryManager() {
     totalAmount: 0,
   })
 
-  // Auto-sync cada 10 segundos
+  // Sincronización automática simple
   useEffect(() => {
     loadOrders()
-    const interval = setInterval(loadOrders, 10000) // Sync cada 10 segundos
-    return () => clearInterval(interval)
-  }, [])
 
-  const loadOrders = async () => {
+    // Sincronizar cada 5 segundos cuando no está en un modal
+    const interval = setInterval(() => {
+      if (!isDialogOpen && !isRouteDialogOpen && !saving) {
+        loadOrders(true) // true = silencioso
+      }
+    }, 5000)
+
+    return () => clearInterval(interval)
+  }, [isDialogOpen, isRouteDialogOpen, saving])
+
+  const loadOrders = async (silent = false) => {
     try {
-      setLoading(true)
-      setError(null)
+      if (!silent) setLoading(true)
 
       const response = await fetch("/api/orders")
 
       if (response.ok) {
         const data = await response.json()
         setOrders(data.orders || [])
-        setConnectionStatus("connected")
-        setLastSync(new Date())
-        setError(null)
+        setIsConnected(true)
       } else {
         throw new Error("Error de servidor")
       }
     } catch (err) {
-      console.error("Error loading orders:", err)
-      // Fallback a localStorage
+      // Usar localStorage como backup
       const savedOrders = localStorage.getItem("arepa-orders")
-      if (savedOrders) {
+      if (savedOrders && orders.length === 0) {
         setOrders(JSON.parse(savedOrders))
       }
-      setConnectionStatus("local")
-      setError("Usando datos locales - Sin conexión al servidor")
+      setIsConnected(false)
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
   }
 
-  const saveOrderToDatabase = async (order: Order) => {
+  const saveOrder = async (order: Order) => {
     try {
       setSaving(true)
-      setError(null)
 
       const response = await fetch("/api/orders", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ order }),
       })
 
       if (response.ok) {
         const data = await response.json()
         setOrders(data.orders || [])
-        setConnectionStatus("connected")
-        setLastSync(new Date())
-        setError(null)
-
-        // Backup en localStorage
+        setIsConnected(true)
         localStorage.setItem("arepa-orders", JSON.stringify(data.orders || []))
       } else {
         throw new Error("Error al guardar")
       }
     } catch (err) {
-      console.error("Error saving order:", err)
-      setConnectionStatus("error")
-      setError("Error de conexión. Guardado localmente.")
-
-      // Guardar en localStorage como backup
+      // Guardar localmente si falla
       const currentOrders = orders.filter((o) => o.id !== order.id)
       const updatedOrders = [...currentOrders, order]
       localStorage.setItem("arepa-orders", JSON.stringify(updatedOrders))
       setOrders(updatedOrders)
+      setIsConnected(false)
     } finally {
       setSaving(false)
     }
   }
 
-  const deleteOrderFromDatabase = async (orderId: string) => {
+  const deleteOrder = async (orderId: string) => {
+    if (!confirm("¿Estás seguro de que quieres eliminar este pedido?")) return
+
     try {
       setSaving(true)
-      setError(null)
 
       const response = await fetch("/api/orders", {
         method: "DELETE",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ orderId }),
       })
 
       if (response.ok) {
         const data = await response.json()
         setOrders(data.orders || [])
-        setConnectionStatus("connected")
-        setLastSync(new Date())
-        setError(null)
-
-        // Actualizar localStorage
         localStorage.setItem("arepa-orders", JSON.stringify(data.orders || []))
-      } else {
-        throw new Error("Error al eliminar")
       }
     } catch (err) {
-      console.error("Error deleting order:", err)
-      setConnectionStatus("error")
-      setError("Error de conexión.")
-
-      // Eliminar de localStorage
       const updatedOrders = orders.filter((order) => order.id !== orderId)
       localStorage.setItem("arepa-orders", JSON.stringify(updatedOrders))
       setOrders(updatedOrders)
@@ -226,16 +202,7 @@ export default function ArepaDeliveryManager() {
   const addProduct = () => {
     setNewOrder((prev) => ({
       ...prev,
-      products: [
-        ...(prev.products || []),
-        {
-          name: "",
-          quantity: 1,
-          unit: "unidades",
-          price: 0,
-          total: 0,
-        },
-      ],
+      products: [...(prev.products || []), { name: "", quantity: 1, unit: "unidades", price: 0, total: 0 }],
     }))
   }
 
@@ -246,14 +213,12 @@ export default function ArepaDeliveryManager() {
           if (i === index) {
             const updatedProduct = { ...product, [field]: value }
 
-            // Recalcular precio y total cuando cambie el producto o la unidad
             if (field === "name" || field === "unit") {
               const price = getProductPrice(updatedProduct.name, updatedProduct.unit)
               updatedProduct.price = price
               updatedProduct.total = price * updatedProduct.quantity
             }
 
-            // Recalcular total cuando cambie la cantidad
             if (field === "quantity") {
               updatedProduct.total = updatedProduct.price * updatedProduct.quantity
             }
@@ -274,7 +239,7 @@ export default function ArepaDeliveryManager() {
     }))
   }
 
-  const saveOrder = async () => {
+  const handleSaveOrder = async () => {
     if (
       !newOrder.customerName ||
       !newOrder.address ||
@@ -306,7 +271,7 @@ export default function ArepaDeliveryManager() {
       createdAt: editingOrder?.createdAt || new Date().toISOString(),
     }
 
-    await saveOrderToDatabase(orderToSave)
+    await saveOrder(orderToSave)
     resetForm()
     setIsDialogOpen(false)
   }
@@ -346,13 +311,7 @@ export default function ArepaDeliveryManager() {
     const order = orders.find((o) => o.id === orderId)
     if (order) {
       const updatedOrder = { ...order, isDelivered: true, paymentMethod }
-      await saveOrderToDatabase(updatedOrder)
-    }
-  }
-
-  const deleteOrder = async (orderId: string) => {
-    if (confirm("¿Estás seguro de que quieres eliminar este pedido?")) {
-      await deleteOrderFromDatabase(orderId)
+      await saveOrder(updatedOrder)
     }
   }
 
@@ -382,7 +341,7 @@ export default function ArepaDeliveryManager() {
     return { total, delivered, pending: total - delivered }
   }
 
-  // Funciones para drag and drop
+  // Drag and drop
   const handleDragStart = (e: React.DragEvent, orderId: string) => {
     setDraggedOrder(orderId)
     e.dataTransfer.effectAllowed = "move"
@@ -407,21 +366,19 @@ export default function ArepaDeliveryManager() {
 
     if (draggedIndex === -1 || targetIndex === -1) return
 
-    // Reordenar los pedidos
     const newOrders = [...dayOrders]
     const [draggedItem] = newOrders.splice(draggedIndex, 1)
     newOrders.splice(targetIndex, 0, draggedItem)
 
-    // Actualizar los routeOrder y guardar en base de datos
     for (let i = 0; i < newOrders.length; i++) {
       const updatedOrder = { ...newOrders[i], routeOrder: i + 1 }
-      await saveOrderToDatabase(updatedOrder)
+      await saveOrder(updatedOrder)
     }
 
     setDraggedOrder(null)
   }
 
-  // Funciones para el organizador de rutas
+  // Organizador de rutas
   const openRouteOrganizer = (date: string) => {
     const dayOrders = getOrdersByDate(date)
     setRouteOrders([...dayOrders])
@@ -439,25 +396,19 @@ export default function ArepaDeliveryManager() {
     setSaving(true)
     for (let i = 0; i < routeOrders.length; i++) {
       const updatedOrder = { ...routeOrders[i], routeOrder: i + 1 }
-      await saveOrderToDatabase(updatedOrder)
+      await saveOrder(updatedOrder)
     }
     setSaving(false)
     setIsRouteDialogOpen(false)
   }
 
-  const OrderCard = ({
-    order,
-    dayOrders,
-    isDragging = false,
-  }: { order: Order; dayOrders: Order[]; isDragging?: boolean }) => {
+  const OrderCard = ({ order, dayOrders }: { order: Order; dayOrders: Order[] }) => {
     const orderIndex = dayOrders.findIndex((o) => o.id === order.id)
 
     return (
       <Card
         className={`mb-4 cursor-move transition-all duration-200 ${
           order.isDelivered ? "bg-green-50 border-green-200" : ""
-        } ${isDragging ? "opacity-50 transform rotate-2" : ""} ${
-          draggedOrder === order.id ? "shadow-lg scale-105" : ""
         }`}
         draggable
         onDragStart={(e) => handleDragStart(e, order.id)}
@@ -544,7 +495,7 @@ export default function ArepaDeliveryManager() {
                   disabled={saving}
                 >
                   <DollarSign className="w-4 h-4 mr-1" />
-                  {saving ? <Loader2 className="w-3 h-3 animate-spin ml-1" /> : "Transferencia"}
+                  Transferencia
                 </Button>
                 <Button
                   size="sm"
@@ -554,7 +505,7 @@ export default function ArepaDeliveryManager() {
                   disabled={saving}
                 >
                   <DollarSign className="w-4 h-4 mr-1" />
-                  {saving ? <Loader2 className="w-3 h-3 animate-spin ml-1" /> : "Efectivo"}
+                  Efectivo
                 </Button>
               </div>
             ) : (
@@ -584,313 +535,263 @@ export default function ArepaDeliveryManager() {
   return (
     <div className="min-h-screen bg-gray-50 p-4">
       <div className="max-w-6xl mx-auto">
-        {/* Panel de estado de conexión */}
-        <Card className="mb-4 border-2 border-blue-200">
-          <CardHeader className="pb-2">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-lg flex items-center gap-2">
-                {connectionStatus === "connected" ? (
-                  <CheckCircle className="w-5 h-5 text-green-500" />
-                ) : connectionStatus === "local" ? (
-                  <AlertCircle className="w-5 h-5 text-yellow-500" />
-                ) : (
-                  <AlertCircle className="w-5 h-5 text-red-500" />
-                )}
-                Estado de Sincronización
-              </CardTitle>
-              <div className="flex items-center gap-2">
-                {lastSync && (
-                  <span className="text-xs text-gray-500">Última sync: {lastSync.toLocaleTimeString()}</span>
-                )}
-                <Button variant="outline" size="sm" onClick={loadOrders} disabled={loading}>
-                  <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
-                </Button>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent className="pt-0">
-            <div className="flex items-center gap-2 text-sm">
-              {connectionStatus === "connected" && (
-                <span className="text-green-600">✅ Conectado - Los pedidos se sincronizan automáticamente</span>
-              )}
-              {connectionStatus === "local" && (
-                <span className="text-yellow-600">⚠️ Modo local - Los pedidos solo se guardan en este dispositivo</span>
-              )}
-              {connectionStatus === "error" && (
-                <span className="text-red-600">❌ Error de conexión - Usando datos locales</span>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-
-        {error && (
-          <Alert className="mb-4">
-            <AlertCircle className="h-4 w-4" />
-            <AlertDescription>{error}</AlertDescription>
-          </Alert>
-        )}
-
         <div className="flex items-center justify-between mb-6">
-          <h1 className="text-3xl font-bold text-gray-900">Gestión de Entregas - Arepas</h1>
-          <div className="flex gap-2">
-            <Button onClick={loadOrders} variant="outline" disabled={loading}>
-              {loading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <RefreshCw className="w-4 h-4 mr-2" />}
-              Actualizar
-            </Button>
-            <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-              <DialogTrigger asChild>
-                <Button onClick={resetForm} disabled={saving}>
-                  <Plus className="w-4 h-4 mr-2" />
-                  Nuevo Pedido
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="max-w-4xl w-[95vw] max-h-[95vh] overflow-y-auto">
-                <DialogHeader>
-                  <DialogTitle>{editingOrder ? "Editar Pedido" : "Nuevo Pedido"}</DialogTitle>
-                </DialogHeader>
+          <div className="flex items-center gap-3">
+            <h1 className="text-3xl font-bold text-gray-900">Gestión de Entregas - Arepas</h1>
+            {isConnected ? (
+              <CheckCircle className="w-6 h-6 text-green-500" title="Conectado" />
+            ) : (
+              <AlertCircle className="w-6 h-6 text-yellow-500" title="Modo local" />
+            )}
+          </div>
+          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+            <DialogTrigger asChild>
+              <Button onClick={resetForm} disabled={saving}>
+                <Plus className="w-4 h-4 mr-2" />
+                Nuevo Pedido
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-4xl w-[95vw] max-h-[95vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>{editingOrder ? "Editar Pedido" : "Nuevo Pedido"}</DialogTitle>
+              </DialogHeader>
 
-                <div className="space-y-6 p-2">
-                  {/* Información del Cliente */}
-                  <div className="bg-gray-50 p-4 rounded-lg">
-                    <h3 className="text-lg font-semibold mb-4 text-gray-800">Información del Cliente</h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <Label htmlFor="customerName" className="text-sm font-medium">
-                          Nombre del Cliente *
-                        </Label>
-                        <Input
-                          id="customerName"
-                          value={newOrder.customerName || ""}
-                          onChange={(e) => setNewOrder((prev) => ({ ...prev, customerName: e.target.value }))}
-                          placeholder="Nombre completo del cliente"
-                          className="mt-1"
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor="phone" className="text-sm font-medium">
-                          Teléfono
-                        </Label>
-                        <Input
-                          id="phone"
-                          value={newOrder.phone || ""}
-                          onChange={(e) => setNewOrder((prev) => ({ ...prev, phone: e.target.value }))}
-                          placeholder="Número de contacto"
-                          className="mt-1"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="mt-4">
-                      <Label htmlFor="address" className="text-sm font-medium">
-                        Dirección de Entrega *
+              <div className="space-y-6 p-2">
+                {/* Información del Cliente */}
+                <div className="bg-gray-50 p-4 rounded-lg">
+                  <h3 className="text-lg font-semibold mb-4 text-gray-800">Información del Cliente</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <Label htmlFor="customerName" className="text-sm font-medium">
+                        Nombre del Cliente *
                       </Label>
-                      <Textarea
-                        id="address"
-                        value={newOrder.address || ""}
-                        onChange={(e) => setNewOrder((prev) => ({ ...prev, address: e.target.value }))}
-                        placeholder="Dirección completa de entrega con referencias"
-                        rows={3}
+                      <Input
+                        id="customerName"
+                        value={newOrder.customerName || ""}
+                        onChange={(e) => setNewOrder((prev) => ({ ...prev, customerName: e.target.value }))}
+                        placeholder="Nombre completo del cliente"
+                        className="mt-1"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="phone" className="text-sm font-medium">
+                        Teléfono
+                      </Label>
+                      <Input
+                        id="phone"
+                        value={newOrder.phone || ""}
+                        onChange={(e) => setNewOrder((prev) => ({ ...prev, phone: e.target.value }))}
+                        placeholder="Número de contacto"
                         className="mt-1"
                       />
                     </div>
                   </div>
 
-                  {/* Información de Entrega */}
-                  <div className="bg-blue-50 p-4 rounded-lg">
-                    <h3 className="text-lg font-semibold mb-4 text-gray-800">Información de Entrega</h3>
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                      <div>
-                        <Label htmlFor="deliveryDate" className="text-sm font-medium">
-                          Fecha de Entrega *
-                        </Label>
-                        <Input
-                          id="deliveryDate"
-                          type="date"
-                          value={newOrder.deliveryDate || ""}
-                          onChange={(e) => setNewOrder((prev) => ({ ...prev, deliveryDate: e.target.value }))}
-                          className="mt-1"
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor="deliveryTime" className="text-sm font-medium">
-                          Hora *
-                        </Label>
-                        <Input
-                          id="deliveryTime"
-                          value={newOrder.deliveryTime || ""}
-                          onChange={(e) => setNewOrder((prev) => ({ ...prev, deliveryTime: e.target.value }))}
-                          placeholder="8:00"
-                          className="mt-1"
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor="timeFormat" className="text-sm font-medium">
-                          AM/PM
-                        </Label>
-                        <Select
-                          value={newOrder.timeFormat}
-                          onValueChange={(value: "AM" | "PM") =>
-                            setNewOrder((prev) => ({ ...prev, timeFormat: value }))
-                          }
-                        >
-                          <SelectTrigger className="mt-1">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="AM">AM</SelectItem>
-                            <SelectItem value="PM">PM</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div>
-                        <Label className="text-sm font-medium">Total del Pedido</Label>
-                        <div className="mt-1 p-2 bg-green-100 rounded-md">
-                          <div className="text-2xl font-bold text-green-700">
-                            ${newOrder.totalAmount?.toLocaleString() || 0}
-                          </div>
+                  <div className="mt-4">
+                    <Label htmlFor="address" className="text-sm font-medium">
+                      Dirección de Entrega *
+                    </Label>
+                    <Textarea
+                      id="address"
+                      value={newOrder.address || ""}
+                      onChange={(e) => setNewOrder((prev) => ({ ...prev, address: e.target.value }))}
+                      placeholder="Dirección completa de entrega con referencias"
+                      rows={3}
+                      className="mt-1"
+                    />
+                  </div>
+                </div>
+
+                {/* Información de Entrega */}
+                <div className="bg-blue-50 p-4 rounded-lg">
+                  <h3 className="text-lg font-semibold mb-4 text-gray-800">Información de Entrega</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <div>
+                      <Label htmlFor="deliveryDate" className="text-sm font-medium">
+                        Fecha de Entrega *
+                      </Label>
+                      <Input
+                        id="deliveryDate"
+                        type="date"
+                        value={newOrder.deliveryDate || ""}
+                        onChange={(e) => setNewOrder((prev) => ({ ...prev, deliveryDate: e.target.value }))}
+                        className="mt-1"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="deliveryTime" className="text-sm font-medium">
+                        Hora *
+                      </Label>
+                      <Input
+                        id="deliveryTime"
+                        value={newOrder.deliveryTime || ""}
+                        onChange={(e) => setNewOrder((prev) => ({ ...prev, deliveryTime: e.target.value }))}
+                        placeholder="8:00"
+                        className="mt-1"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="timeFormat" className="text-sm font-medium">
+                        AM/PM
+                      </Label>
+                      <Select
+                        value={newOrder.timeFormat}
+                        onValueChange={(value: "AM" | "PM") => setNewOrder((prev) => ({ ...prev, timeFormat: value }))}
+                      >
+                        <SelectTrigger className="mt-1">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="AM">AM</SelectItem>
+                          <SelectItem value="PM">PM</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium">Total del Pedido</Label>
+                      <div className="mt-1 p-2 bg-green-100 rounded-md">
+                        <div className="text-2xl font-bold text-green-700">
+                          ${newOrder.totalAmount?.toLocaleString() || 0}
                         </div>
                       </div>
                     </div>
                   </div>
+                </div>
 
-                  {/* Productos */}
-                  <div className="bg-yellow-50 p-4 rounded-lg">
-                    <div className="flex items-center justify-between mb-4">
-                      <h3 className="text-lg font-semibold text-gray-800">Productos del Pedido *</h3>
-                      <Button type="button" variant="outline" size="sm" onClick={addProduct}>
-                        <Plus className="w-4 h-4 mr-2" />
-                        Agregar Producto
-                      </Button>
+                {/* Productos */}
+                <div className="bg-yellow-50 p-4 rounded-lg">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-lg font-semibold text-gray-800">Productos del Pedido *</h3>
+                    <Button type="button" variant="outline" size="sm" onClick={addProduct}>
+                      <Plus className="w-4 h-4 mr-2" />
+                      Agregar Producto
+                    </Button>
+                  </div>
+
+                  {newOrder.products?.length === 0 && (
+                    <div className="text-center py-8 text-gray-500">
+                      <p>No hay productos agregados</p>
+                      <p className="text-sm">Haz clic en "Agregar Producto" para comenzar</p>
                     </div>
+                  )}
 
-                    {newOrder.products?.length === 0 && (
-                      <div className="text-center py-8 text-gray-500">
-                        <p>No hay productos agregados</p>
-                        <p className="text-sm">Haz clic en "Agregar Producto" para comenzar</p>
-                      </div>
-                    )}
+                  <div className="space-y-3">
+                    {newOrder.products?.map((product, index) => (
+                      <div key={index} className="bg-white p-4 border rounded-lg shadow-sm">
+                        <div className="grid grid-cols-1 md:grid-cols-6 gap-3 items-end">
+                          <div className="md:col-span-2">
+                            <Label className="text-sm font-medium">Producto</Label>
+                            <Select value={product.name} onValueChange={(value) => updateProduct(index, "name", value)}>
+                              <SelectTrigger className="mt-1">
+                                <SelectValue placeholder="Seleccionar producto" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {PRODUCTS.map((prod) => (
+                                  <SelectItem key={prod.name} value={prod.name}>
+                                    {prod.name}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
 
-                    <div className="space-y-3">
-                      {newOrder.products?.map((product, index) => (
-                        <div key={index} className="bg-white p-4 border rounded-lg shadow-sm">
-                          <div className="grid grid-cols-1 md:grid-cols-6 gap-3 items-end">
-                            <div className="md:col-span-2">
-                              <Label className="text-sm font-medium">Producto</Label>
+                          <div>
+                            <Label className="text-sm font-medium">Cantidad</Label>
+                            <Input
+                              type="number"
+                              value={product.quantity}
+                              onChange={(e) => updateProduct(index, "quantity", Number.parseInt(e.target.value) || 1)}
+                              className="mt-1"
+                              min="1"
+                            />
+                          </div>
+
+                          {product.name && PRODUCTS.find((p) => p.name === product.name)?.units.length! > 1 && (
+                            <div>
+                              <Label className="text-sm font-medium">Unidad</Label>
                               <Select
-                                value={product.name}
-                                onValueChange={(value) => updateProduct(index, "name", value)}
+                                value={product.unit}
+                                onValueChange={(value) => updateProduct(index, "unit", value)}
                               >
                                 <SelectTrigger className="mt-1">
-                                  <SelectValue placeholder="Seleccionar producto" />
+                                  <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent>
-                                  {PRODUCTS.map((prod) => (
-                                    <SelectItem key={prod.name} value={prod.name}>
-                                      {prod.name}
+                                  {PRODUCTS.find((p) => p.name === product.name)?.units.map((unit) => (
+                                    <SelectItem key={unit} value={unit}>
+                                      {unit}
                                     </SelectItem>
                                   ))}
                                 </SelectContent>
                               </Select>
                             </div>
+                          )}
 
-                            <div>
-                              <Label className="text-sm font-medium">Cantidad</Label>
-                              <Input
-                                type="number"
-                                value={product.quantity}
-                                onChange={(e) => updateProduct(index, "quantity", Number.parseInt(e.target.value) || 1)}
-                                className="mt-1"
-                                min="1"
-                              />
-                            </div>
-
-                            {product.name && PRODUCTS.find((p) => p.name === product.name)?.units.length! > 1 && (
-                              <div>
-                                <Label className="text-sm font-medium">Unidad</Label>
-                                <Select
-                                  value={product.unit}
-                                  onValueChange={(value) => updateProduct(index, "unit", value)}
-                                >
-                                  <SelectTrigger className="mt-1">
-                                    <SelectValue />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    {PRODUCTS.find((p) => p.name === product.name)?.units.map((unit) => (
-                                      <SelectItem key={unit} value={unit}>
-                                        {unit}
-                                      </SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                            )}
-
-                            <div>
-                              <Label className="text-sm font-medium">Precio Unit.</Label>
-                              <div className="mt-1 p-2 bg-gray-100 rounded text-sm font-medium">
-                                ${product.price.toLocaleString()}
-                              </div>
-                            </div>
-
-                            <div>
-                              <Label className="text-sm font-medium">Total</Label>
-                              <div className="mt-1 p-2 bg-green-100 rounded text-sm font-bold text-green-700">
-                                ${product.total.toLocaleString()}
-                              </div>
-                            </div>
-
-                            <div>
-                              <Button
-                                type="button"
-                                variant="destructive"
-                                size="sm"
-                                onClick={() => removeProduct(index)}
-                                className="w-full"
-                              >
-                                Eliminar
-                              </Button>
+                          <div>
+                            <Label className="text-sm font-medium">Precio Unit.</Label>
+                            <div className="mt-1 p-2 bg-gray-100 rounded text-sm font-medium">
+                              ${product.price.toLocaleString()}
                             </div>
                           </div>
+
+                          <div>
+                            <Label className="text-sm font-medium">Total</Label>
+                            <div className="mt-1 p-2 bg-green-100 rounded text-sm font-bold text-green-700">
+                              ${product.total.toLocaleString()}
+                            </div>
+                          </div>
+
+                          <div>
+                            <Button
+                              type="button"
+                              variant="destructive"
+                              size="sm"
+                              onClick={() => removeProduct(index)}
+                              className="w-full"
+                            >
+                              Eliminar
+                            </Button>
+                          </div>
                         </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Notas Adicionales */}
-                  <div className="bg-purple-50 p-4 rounded-lg">
-                    <h3 className="text-lg font-semibold mb-4 text-gray-800">Notas Adicionales</h3>
-                    <Textarea
-                      id="notes"
-                      value={newOrder.notes || ""}
-                      onChange={(e) => setNewOrder((prev) => ({ ...prev, notes: e.target.value }))}
-                      placeholder="Instrucciones especiales, referencias adicionales, observaciones..."
-                      rows={3}
-                      className="w-full"
-                    />
-                  </div>
-
-                  {/* Botones de Acción */}
-                  <div className="flex gap-3 pt-4 border-t">
-                    <Button onClick={saveOrder} className="flex-1 h-12 text-lg" disabled={saving}>
-                      {saving ? (
-                        <>
-                          <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                          Guardando...
-                        </>
-                      ) : editingOrder ? (
-                        "Actualizar Pedido"
-                      ) : (
-                        "Guardar Pedido"
-                      )}
-                    </Button>
-                    <Button variant="outline" onClick={() => setIsDialogOpen(false)} className="h-12 px-8">
-                      Cancelar
-                    </Button>
+                      </div>
+                    ))}
                   </div>
                 </div>
-              </DialogContent>
-            </Dialog>
-          </div>
+
+                {/* Notas Adicionales */}
+                <div className="bg-purple-50 p-4 rounded-lg">
+                  <h3 className="text-lg font-semibold mb-4 text-gray-800">Notas Adicionales</h3>
+                  <Textarea
+                    id="notes"
+                    value={newOrder.notes || ""}
+                    onChange={(e) => setNewOrder((prev) => ({ ...prev, notes: e.target.value }))}
+                    placeholder="Instrucciones especiales, referencias adicionales, observaciones..."
+                    rows={3}
+                    className="w-full"
+                  />
+                </div>
+
+                {/* Botones de Acción */}
+                <div className="flex gap-3 pt-4 border-t">
+                  <Button onClick={handleSaveOrder} className="flex-1 h-12 text-lg" disabled={saving}>
+                    {saving ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                        Guardando...
+                      </>
+                    ) : editingOrder ? (
+                      "Actualizar Pedido"
+                    ) : (
+                      "Guardar Pedido"
+                    )}
+                  </Button>
+                  <Button variant="outline" onClick={() => setIsDialogOpen(false)} className="h-12 px-8">
+                    Cancelar
+                  </Button>
+                </div>
+              </div>
+            </DialogContent>
+          </Dialog>
         </div>
 
         {/* Dialog para organizar rutas */}
@@ -1040,20 +941,8 @@ export default function ArepaDeliveryManager() {
                       </div>
                     </div>
 
-                    <div className="bg-blue-50 p-3 rounded-lg mb-4">
-                      <p className="text-sm text-blue-800">
-                        💡 <strong>Tip:</strong> Arrastra las tarjetas de pedidos para cambiar el orden de entrega, o
-                        usa el botón "Organizar Ruta" para una vista más cómoda.
-                      </p>
-                    </div>
-
                     {dayOrders.map((order) => (
-                      <OrderCard
-                        key={order.id}
-                        order={order}
-                        dayOrders={dayOrders}
-                        isDragging={draggedOrder === order.id}
-                      />
+                      <OrderCard key={order.id} order={order} dayOrders={dayOrders} />
                     ))}
                   </div>
                 </TabsContent>
