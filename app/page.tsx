@@ -67,11 +67,12 @@ interface Order {
 const PRODUCTS = [
   { name: "Arepas de maíz", units: ["unidades"], price: 8000 },
   { name: "Kilos de masa de maíz", units: ["kilos"], price: 8000 },
-  { name: "Queso tipo paisa", units: ["kilo", "libra"], price: { kilo: 24000, libra: 13000 } },
-  { name: "Queso semiduro", units: ["kilo", "libra"], price: { kilo: 24000, libra: 13000 } },
-  { name: "Requeso", units: ["unidades"], price: 10000 },
-  { name: "Limones", units: ["unidades"], price: 5000 },
-  { name: "Chorizos", units: ["unidades"], price: 20000 },
+  { name: "Queso tipo paisa", units: ["kilo", "libra"], price: { kilo: 25000, libra: 13000 } },
+  { name: "Queso semiduro", units: ["kilo", "libra"], price: { kilo: 25000, libra: 13000 } },
+  { name: "Requesón", units: ["unidades"], price: 12000 },
+  { name: "Limones", units: ["unidades"], price: 6000 },
+  { name: "Chorizos", units: ["unidades"], price: 23000 },
+  { name: "Mora", units: ["unidades"], price: 6500 },
 ]
 
 const DAYS_OF_WEEK = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"]
