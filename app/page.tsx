@@ -14,7 +14,6 @@ import {
   GripVertical,
   Route,
   Loader2,
-  CheckCircle,
   AlertCircle,
   Calendar,
   ChevronLeft,
@@ -25,6 +24,9 @@ import {
   Instagram,
   Facebook,
   Heart,
+  Database,
+  Wifi,
+  WifiOff,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -65,12 +67,11 @@ interface Order {
 const PRODUCTS = [
   { name: "Arepas de maíz", units: ["unidades"], price: 8000 },
   { name: "Kilos de masa de maíz", units: ["kilos"], price: 8000 },
-  { name: "Queso tipo paisa", units: ["kilo", "libra"], price: { kilo: 25000, libra: 13000 } },
-  { name: "Queso semiduro", units: ["kilo", "libra"], price: { kilo: 25000, libra: 13000 } },
-  { name: "Requesón", units: ["unidades"], price: 12000 },
-  { name: "Limones", units: ["unidades"], price: 6000 },
-  { name: "Chorizos", units: ["unidades"], price: 23000 },
-  { name: "Mora", units: ["unidades"], price: 6500 },
+  { name: "Queso tipo paisa", units: ["kilo", "libra"], price: { kilo: 24000, libra: 13000 } },
+  { name: "Queso semiduro", units: ["kilo", "libra"], price: { kilo: 24000, libra: 13000 } },
+  { name: "Requeso", units: ["unidades"], price: 10000 },
+  { name: "Limones", units: ["unidades"], price: 5000 },
+  { name: "Chorizos", units: ["unidades"], price: 20000 },
 ]
 
 const DAYS_OF_WEEK = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"]
@@ -113,6 +114,7 @@ export default function ArepaDeliveryManager() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [isConnected, setIsConnected] = useState(false)
+  const [dataSource, setDataSource] = useState<"supabase" | "localStorage" | "error">("localStorage")
   const [lastSyncTime, setLastSyncTime] = useState<number>(0)
 
   const [newOrder, setNewOrder] = useState<Partial<Order>>({
@@ -132,15 +134,14 @@ export default function ArepaDeliveryManager() {
     loadOrders()
   }, [])
 
-  // Sincronización automática optimizada (solo cada 30 segundos y cuando no hay actividad)
+  // Sincronización automática optimizada
   useEffect(() => {
     const interval = setInterval(() => {
-      // Solo sincronizar si no hay modales abiertos, no se está guardando, y han pasado al menos 30 segundos
       const now = Date.now()
       if (!isDialogOpen && !isRouteDialogOpen && !saving && now - lastSyncTime > 30000) {
-        loadOrders(true) // Carga silenciosa
+        loadOrders(true)
       }
-    }, 30000) // Cada 30 segundos en lugar de 5
+    }, 30000)
 
     return () => clearInterval(interval)
   }, [isDialogOpen, isRouteDialogOpen, saving, lastSyncTime])
@@ -161,7 +162,11 @@ export default function ArepaDeliveryManager() {
           const data = await response.json()
           const loadedOrders = data.orders || []
 
-          // Solo actualizar si hay cambios reales para evitar re-renders innecesarios
+          // Determinar fuente de datos
+          setDataSource(data.source || "supabase")
+          setIsConnected(data.source === "supabase")
+
+          // Solo actualizar si hay cambios reales
           setOrders((currentOrders) => {
             const ordersChanged = JSON.stringify(loadedOrders) !== JSON.stringify(currentOrders)
             if (ordersChanged) {
@@ -172,26 +177,27 @@ export default function ArepaDeliveryManager() {
             return currentOrders
           })
 
-          setIsConnected(true)
           setLastSyncTime(Date.now())
         } else {
           throw new Error("Error de servidor")
         }
       } catch (err) {
         console.error("Error loading orders:", err)
-        // Usar localStorage como backup solo si no hay datos o es la primera carga
+        // Usar localStorage como backup
         if (orders.length === 0 || !silent) {
           const savedOrders = localStorage.getItem("arepa-orders")
           if (savedOrders) {
             try {
               const parsedOrders = JSON.parse(savedOrders)
               setOrders(parsedOrders)
+              setDataSource("localStorage")
             } catch (parseError) {
               console.error("Error parsing saved orders:", parseError)
             }
           }
         }
         setIsConnected(false)
+        setDataSource("error")
       } finally {
         if (!silent) setLoading(false)
       }
@@ -214,7 +220,7 @@ export default function ArepaDeliveryManager() {
         return updatedOrders
       })
 
-      // Intentar guardar en el servidor
+      // Intentar guardar en Supabase
       const response = await fetch("/api/orders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -226,6 +232,7 @@ export default function ArepaDeliveryManager() {
         const serverOrders = data.orders || []
         setOrders(serverOrders)
         setIsConnected(true)
+        setDataSource("supabase")
         localStorage.setItem("arepa-orders", JSON.stringify(serverOrders))
         setLastSyncTime(Date.now())
       } else {
@@ -234,6 +241,7 @@ export default function ArepaDeliveryManager() {
     } catch (err) {
       console.error("Error saving order:", err)
       setIsConnected(false)
+      setDataSource("localStorage")
       // Los datos ya están guardados localmente, así que no se pierden
     } finally {
       setSaving(false)
@@ -264,12 +272,14 @@ export default function ArepaDeliveryManager() {
         const data = await response.json()
         const serverOrders = data.orders || []
         setOrders(serverOrders)
+        setDataSource("supabase")
         localStorage.setItem("arepa-orders", JSON.stringify(serverOrders))
         setLastSyncTime(Date.now())
       }
     } catch (err) {
       console.error("Error deleting order:", err)
       setIsConnected(false)
+      setDataSource("localStorage")
     } finally {
       setSaving(false)
     }
@@ -308,7 +318,7 @@ export default function ArepaDeliveryManager() {
 
           // Actualizar el campo específico
           if (field === "quantity") {
-            updatedProduct.quantity = Math.max(1, Number(value) || 1) // Asegurar mínimo 1
+            updatedProduct.quantity = Math.max(1, Number(value) || 1)
           } else {
             updatedProduct[field] = value as any
           }
@@ -412,9 +422,8 @@ export default function ArepaDeliveryManager() {
     async (orderId: string, paymentMethod: "transferencia" | "efectivo") => {
       const order = orders.find((o) => o.id === orderId)
       if (order) {
-        // IMPORTANTE: Mantener todos los datos del pedido, solo cambiar el estado de entrega
         const updatedOrder: Order = {
-          ...order, // Mantener TODOS los datos existentes
+          ...order,
           isDelivered: true,
           paymentMethod,
           updatedAt: new Date().toISOString(),
@@ -524,7 +533,6 @@ export default function ArepaDeliveryManager() {
       const [draggedItem] = newOrders.splice(draggedIndex, 1)
       newOrders.splice(targetIndex, 0, draggedItem)
 
-      // Actualizar el orden de ruta para todos los pedidos del día
       for (let i = 0; i < newOrders.length; i++) {
         const updatedOrder = { ...newOrders[i], routeOrder: i + 1, updatedAt: new Date().toISOString() }
         await saveOrder(updatedOrder)
@@ -706,6 +714,7 @@ export default function ArepaDeliveryManager() {
         <div className="text-center">
           <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4" />
           <p className="text-gray-600">Cargando pedidos...</p>
+          <p className="text-sm text-gray-500 mt-2">Conectando con la base de datos...</p>
         </div>
       </div>
     )
@@ -714,15 +723,29 @@ export default function ArepaDeliveryManager() {
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-4xl mx-auto p-4">
-        {/* Header */}
+        {/* Header con indicador de conexión mejorado */}
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-3">
             <h1 className="text-2xl md:text-3xl font-bold text-gray-900">Gestión de Entregas - Arepas</h1>
-            {isConnected ? (
-              <CheckCircle className="w-5 h-5 text-green-500" title="Conectado" />
-            ) : (
-              <AlertCircle className="w-5 h-5 text-yellow-500" title="Modo local" />
-            )}
+            <div className="flex items-center gap-2">
+              {dataSource === "supabase" ? (
+                <div className="flex items-center gap-1 px-2 py-1 bg-green-100 rounded-full">
+                  <Database className="w-4 h-4 text-green-600" />
+                  <Wifi className="w-4 h-4 text-green-600" />
+                  <span className="text-xs text-green-700 font-medium">Supabase</span>
+                </div>
+              ) : dataSource === "localStorage" ? (
+                <div className="flex items-center gap-1 px-2 py-1 bg-yellow-100 rounded-full">
+                  <WifiOff className="w-4 h-4 text-yellow-600" />
+                  <span className="text-xs text-yellow-700 font-medium">Local</span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-1 px-2 py-1 bg-red-100 rounded-full">
+                  <AlertCircle className="w-4 h-4 text-red-600" />
+                  <span className="text-xs text-red-700 font-medium">Error</span>
+                </div>
+              )}
+            </div>
           </div>
           <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
             <DialogTrigger asChild>
@@ -1043,6 +1066,27 @@ export default function ArepaDeliveryManager() {
           </DialogContent>
         </Dialog>
 
+        {/* Indicador de estado de datos */}
+        {dataSource !== "supabase" && (
+          <Card className="mb-4 border-yellow-200 bg-yellow-50">
+            <CardContent className="p-4">
+              <div className="flex items-center gap-3">
+                <AlertCircle className="w-5 h-5 text-yellow-600" />
+                <div>
+                  <p className="text-sm font-medium text-yellow-800">
+                    {dataSource === "localStorage"
+                      ? "Trabajando en modo local - Los datos se guardan en tu navegador"
+                      : "Error de conexión - Usando datos locales como respaldo"}
+                  </p>
+                  <p className="text-xs text-yellow-700 mt-1">
+                    Los pedidos se sincronizarán automáticamente cuando se restablezca la conexión
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {uniqueWeeks.length === 0 ? (
           <Card>
             <CardContent className="text-center py-12">
@@ -1281,18 +1325,23 @@ export default function ArepaDeliveryManager() {
             <div className="flex flex-col md:flex-row items-center justify-between gap-4 text-sm text-gray-500">
               <p>© 2025 Sistema de Gestión de Entregas - Arepas. Todos los derechos reservados.</p>
               <p className="flex items-center gap-2">
-                <span>Versión 2.0</span>
+                <span>Versión 2.1</span>
                 <span>•</span>
                 <span className="flex items-center gap-1">
-                  {isConnected ? (
+                  {dataSource === "supabase" ? (
                     <>
-                      <CheckCircle className="w-4 h-4 text-green-500" />
-                      Conectado
+                      <Database className="w-4 h-4 text-green-500" />
+                      Supabase
                     </>
-                  ) : (
+                  ) : dataSource === "localStorage" ? (
                     <>
                       <AlertCircle className="w-4 h-4 text-yellow-500" />
                       Modo Local
+                    </>
+                  ) : (
+                    <>
+                      <AlertCircle className="w-4 h-4 text-red-500" />
+                      Error
                     </>
                   )}
                 </span>
