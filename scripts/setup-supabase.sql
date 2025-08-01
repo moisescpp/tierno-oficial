@@ -1,3 +1,6 @@
+-- Script para crear la tabla en Supabase
+-- Ejecutar en el SQL Editor de Supabase
+
 -- Crear tabla para los pedidos
 CREATE TABLE IF NOT EXISTS orders (
   id TEXT PRIMARY KEY,
@@ -37,3 +40,11 @@ CREATE TRIGGER update_orders_updated_at
     BEFORE UPDATE ON orders
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
+
+-- Habilitar Row Level Security (RLS) - Opcional para mayor seguridad
+ALTER TABLE orders ENABLE ROW LEVEL SECURITY;
+
+-- Política para permitir todas las operaciones (para desarrollo)
+-- En producción podrías restringir por usuario
+CREATE POLICY "Allow all operations on orders" ON orders
+    FOR ALL USING (true);
