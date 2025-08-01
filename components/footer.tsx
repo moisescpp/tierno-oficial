@@ -11,7 +11,7 @@ export function Footer({ isConnected }: FooterProps) {
         <div className="flex flex-col lg:flex-row items-center justify-between gap-6">
           {/* Información del desarrollador */}
           <div className="text-center lg:text-left">
-            <h3 className="text-lg font-semibold text-gray-800 mb-2">Desarrollado por Moisés Camilo Pérez Prieto</h3>
+            <h3 className="text-lg font-semibold text-gray-800 mb-2">Desarrollado por Moises Camilo Perez Prieto</h3>
             <p className="text-sm text-gray-600 flex items-center justify-center lg:justify-start gap-1">
               Hecho con <Heart className="w-4 h-4 text-red-500 fill-current animate-pulse" /> para optimizar tu negocio
             </p>
@@ -22,7 +22,7 @@ export function Footer({ isConnected }: FooterProps) {
             <span className="text-sm text-gray-600 font-medium">Sígueme en:</span>
             <div className="flex gap-3">
               <a
-                href="https://github.com/moisescpp/tierno-oficial"
+                href="https://github.com/moisescamilo"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="p-3 rounded-full bg-gray-100 hover:bg-gray-800 text-gray-600 hover:text-white transition-all duration-300 transform hover:scale-110 shadow-sm hover:shadow-md"
@@ -31,20 +31,20 @@ export function Footer({ isConnected }: FooterProps) {
                 <Github className="w-5 h-5" />
               </a>
               <a
-                href="https://www.instagram.com/moises26__/"
+                href="https://instagram.com/moisescamilo"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="p-3 rounded-full bg-gray-100 hover:bg-gradient-to-r hover:from-purple-500 hover:to-pink-500 text-gray-600 hover:text-white transition-all duration-300 transform hover:scale-110 shadow-sm hover:shadow-md"
-                title="Instagram - @moises26__"
+                title="Instagram - @moisescamilo"
               >
                 <Instagram className="w-5 h-5" />
               </a>
               <a
-                href="https://www.facebook.com/moises.perez.927399/"
+                href="https://facebook.com/moisescamilo"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="p-3 rounded-full bg-gray-100 hover:bg-blue-600 text-gray-600 hover:text-white transition-all duration-300 transform hover:scale-110 shadow-sm hover:shadow-md"
-                title="Facebook - Moisés Pérez"
+                title="Facebook - Moises Camilo"
               >
                 <Facebook className="w-5 h-5" />
               </a>
