@@ -21,6 +21,10 @@ import {
   ChevronRight,
   TrendingUp,
   Package,
+  Github,
+  Instagram,
+  Facebook,
+  Heart,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -62,9 +66,8 @@ const PRODUCTS = [
   { name: "Kilos de masa de maíz", units: ["kilos"], price: 8000 },
   { name: "Queso tipo paisa", units: ["kilo", "libra"], price: { kilo: 24000, libra: 13000 } },
   { name: "Queso semiduro", units: ["kilo", "libra"], price: { kilo: 24000, libra: 13000 } },
-  { name: "Requeson", units: ["unidades"], price: 10000 },
+  { name: "Requeso", units: ["unidades"], price: 10000 },
   { name: "Limones", units: ["unidades"], price: 5000 },
-  { name: "Mora", units: ["unidades"], price: 6000 },
   { name: "Chorizos", units: ["unidades"], price: 20000 },
 ]
 
@@ -1128,6 +1131,79 @@ export default function ArepaDeliveryManager() {
           </div>
         )}
       </div>
+
+      {/* Footer Profesional */}
+      <footer className="mt-12 border-t bg-white">
+        <div className="max-w-4xl mx-auto px-4 py-8">
+          <div className="flex flex-col md:flex-row items-center justify-between gap-6">
+            {/* Información del desarrollador */}
+            <div className="text-center md:text-left">
+              <h3 className="text-lg font-semibold text-gray-800 mb-2">Desarrollado por Moises Camilo Perez Prieto</h3>
+              <p className="text-sm text-gray-600 flex items-center justify-center md:justify-start gap-1">
+                Hecho con <Heart className="w-4 h-4 text-red-500 fill-current" /> para optimizar tu negocio
+              </p>
+            </div>
+
+            {/* Redes sociales */}
+            <div className="flex items-center gap-4">
+              <span className="text-sm text-gray-600 font-medium">Sígueme en:</span>
+              <div className="flex gap-3">
+                <a
+                  href="https://github.com/moisescamilo"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="p-2 rounded-full bg-gray-100 hover:bg-gray-800 text-gray-600 hover:text-white transition-all duration-200 group"
+                  title="GitHub"
+                >
+                  <Github className="w-5 h-5" />
+                </a>
+                <a
+                  href="https://instagram.com/moisescamilo"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="p-2 rounded-full bg-gray-100 hover:bg-gradient-to-r hover:from-purple-500 hover:to-pink-500 text-gray-600 hover:text-white transition-all duration-200 group"
+                  title="Instagram"
+                >
+                  <Instagram className="w-5 h-5" />
+                </a>
+                <a
+                  href="https://facebook.com/moisescamilo"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="p-2 rounded-full bg-gray-100 hover:bg-blue-600 text-gray-600 hover:text-white transition-all duration-200 group"
+                  title="Facebook"
+                >
+                  <Facebook className="w-5 h-5" />
+                </a>
+              </div>
+            </div>
+          </div>
+
+          {/* Línea divisoria y copyright */}
+          <div className="mt-6 pt-6 border-t border-gray-200">
+            <div className="flex flex-col md:flex-row items-center justify-between gap-4 text-sm text-gray-500">
+              <p>© 2025 Sistema de Gestión de Entregas - Arepas. Todos los derechos reservados.</p>
+              <p className="flex items-center gap-2">
+                <span>Versión 2.0</span>
+                <span>•</span>
+                <span className="flex items-center gap-1">
+                  {isConnected ? (
+                    <>
+                      <CheckCircle className="w-4 h-4 text-green-500" />
+                      Conectado
+                    </>
+                  ) : (
+                    <>
+                      <AlertCircle className="w-4 h-4 text-yellow-500" />
+                      Modo Local
+                    </>
+                  )}
+                </span>
+              </p>
+            </div>
+          </div>
+        </div>
+      </footer>
     </div>
   )
 }
