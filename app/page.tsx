@@ -3,7 +3,20 @@
 import type React from "react"
 
 import { useState, useEffect } from "react"
-import { Plus, MapPin, Clock, User, DollarSign, Check, Edit3, GripVertical, Route, Loader2 } from "lucide-react"
+import {
+  Plus,
+  MapPin,
+  Clock,
+  User,
+  DollarSign,
+  Check,
+  Edit3,
+  GripVertical,
+  Route,
+  Loader2,
+  AlertCircle,
+  CheckCircle,
+} from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -53,10 +66,29 @@ const PRODUCTS = [
 
 const DAYS_OF_WEEK = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"]
 
-// Configuración de Supabase
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://your-project.supabase.co"
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "your-anon-key"
-const supabase = createClient(supabaseUrl, supabaseKey)
+// Configuración de Supabase con diagnóstico
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+let supabase: any = null
+const connectionStatus = {
+  hasUrl: !!supabaseUrl,
+  hasKey: !!supabaseKey,
+  isConnected: false,
+  error: null as string | null,
+}
+
+if (supabaseUrl && supabaseKey) {
+  try {
+    supabase = createClient(supabaseUrl, supabaseKey)
+    connectionStatus.isConnected = true
+  } catch (error) {
+    connectionStatus.error = "Error al crear cliente de Supabase"
+    console.error("Supabase connection error:", error)
+  }
+} else {
+  connectionStatus.error = "Variables de entorno faltantes"
+}
 
 export default function ArepaDeliveryManager() {
   const [orders, setOrders] = useState<Order[]>([])
@@ -69,6 +101,7 @@ export default function ArepaDeliveryManager() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [showDiagnostic, setShowDiagnostic] = useState(false)
   const [newOrder, setNewOrder] = useState<Partial<Order>>({
     customerName: "",
     address: "",
@@ -86,10 +119,55 @@ export default function ArepaDeliveryManager() {
     loadOrders()
   }, [])
 
+  const testConnection = async () => {
+    if (!supabase) {
+      setError("Supabase no está configurado correctamente")
+      return false
+    }
+
+    try {
+      const { data, error } = await supabase.from("orders").select("count", { count: "exact" })
+      if (error) {
+        console.error("Connection test error:", error)
+        setError(`Error de conexión: ${error.message}`)
+        return false
+      }
+      setError(null)
+      return true
+    } catch (err) {
+      console.error("Connection test failed:", err)
+      setError("No se puede conectar a la base de datos")
+      return false
+    }
+  }
+
   const loadOrders = async () => {
     try {
       setLoading(true)
       setError(null)
+
+      if (!supabase) {
+        // Fallback a localStorage
+        const savedOrders = localStorage.getItem("arepa-orders")
+        if (savedOrders) {
+          setOrders(JSON.parse(savedOrders))
+        }
+        setError("Usando datos locales - Supabase no configurado")
+        setLoading(false)
+        return
+      }
+
+      // Probar conexión primero
+      const isConnected = await testConnection()
+      if (!isConnected) {
+        // Fallback a localStorage
+        const savedOrders = localStorage.getItem("arepa-orders")
+        if (savedOrders) {
+          setOrders(JSON.parse(savedOrders))
+        }
+        setLoading(false)
+        return
+      }
 
       const { data, error } = await supabase.from("orders").select("*").order("created_at", { ascending: false })
 
@@ -100,11 +178,30 @@ export default function ArepaDeliveryManager() {
         if (savedOrders) {
           setOrders(JSON.parse(savedOrders))
         }
-        setError("Usando datos locales. Verifica tu conexión a internet.")
+        setError(`Error de base de datos: ${error.message}`)
       } else {
-        setOrders(data || [])
+        // Convertir datos de Supabase al formato de la aplicación
+        const convertedOrders = data.map((row: any) => ({
+          id: row.id,
+          customerName: row.customer_name,
+          address: row.address,
+          deliveryTime: row.delivery_time,
+          timeFormat: row.time_format,
+          deliveryDate: row.delivery_date,
+          products: row.products,
+          paymentMethod: row.payment_method,
+          isDelivered: row.is_delivered,
+          routeOrder: row.route_order,
+          phone: row.phone,
+          notes: row.notes,
+          totalAmount: Number.parseFloat(row.total_amount),
+          createdAt: row.created_at,
+        }))
+
+        setOrders(convertedOrders)
         // Backup en localStorage
-        localStorage.setItem("arepa-orders", JSON.stringify(data || []))
+        localStorage.setItem("arepa-orders", JSON.stringify(convertedOrders))
+        setError(null)
       }
     } catch (err) {
       console.error("Error:", err)
@@ -113,7 +210,7 @@ export default function ArepaDeliveryManager() {
       if (savedOrders) {
         setOrders(JSON.parse(savedOrders))
       }
-      setError("Usando datos locales. Verifica tu conexión a internet.")
+      setError("Error de conexión. Usando datos locales.")
     } finally {
       setLoading(false)
     }
@@ -123,6 +220,16 @@ export default function ArepaDeliveryManager() {
     try {
       setSaving(true)
       setError(null)
+
+      if (!supabase) {
+        // Solo guardar en localStorage
+        const currentOrders = orders.filter((o) => o.id !== order.id)
+        const updatedOrders = [...currentOrders, order]
+        localStorage.setItem("arepa-orders", JSON.stringify(updatedOrders))
+        setOrders(updatedOrders)
+        setError("Guardado solo localmente - Supabase no configurado")
+        return
+      }
 
       const { error } = await supabase.from("orders").upsert([
         {
@@ -145,11 +252,12 @@ export default function ArepaDeliveryManager() {
 
       if (error) {
         console.error("Error saving order:", error)
-        setError("Error al guardar. Los datos se mantienen localmente.")
+        setError(`Error al guardar: ${error.message}`)
         // Guardar en localStorage como backup
         const currentOrders = orders.filter((o) => o.id !== order.id)
         const updatedOrders = [...currentOrders, order]
         localStorage.setItem("arepa-orders", JSON.stringify(updatedOrders))
+        setOrders(updatedOrders)
       } else {
         // Actualizar estado local
         setOrders((prev) => {
@@ -160,10 +268,11 @@ export default function ArepaDeliveryManager() {
         })
         // Backup en localStorage
         localStorage.setItem("arepa-orders", JSON.stringify(orders))
+        setError(null)
       }
     } catch (err) {
       console.error("Error:", err)
-      setError("Error de conexión. Los datos se guardan localmente.")
+      setError("Error de conexión. Guardado localmente.")
       // Guardar en localStorage como backup
       const currentOrders = orders.filter((o) => o.id !== order.id)
       const updatedOrders = [...currentOrders, order]
@@ -179,16 +288,26 @@ export default function ArepaDeliveryManager() {
       setSaving(true)
       setError(null)
 
+      if (!supabase) {
+        // Solo eliminar de localStorage
+        const updatedOrders = orders.filter((order) => order.id !== orderId)
+        localStorage.setItem("arepa-orders", JSON.stringify(updatedOrders))
+        setOrders(updatedOrders)
+        setError("Eliminado solo localmente - Supabase no configurado")
+        return
+      }
+
       const { error } = await supabase.from("orders").delete().eq("id", orderId)
 
       if (error) {
         console.error("Error deleting order:", error)
-        setError("Error al eliminar. Los datos se mantienen localmente.")
+        setError(`Error al eliminar: ${error.message}`)
       } else {
         setOrders((prev) => prev.filter((order) => order.id !== orderId))
         // Actualizar localStorage
         const updatedOrders = orders.filter((order) => order.id !== orderId)
         localStorage.setItem("arepa-orders", JSON.stringify(updatedOrders))
+        setError(null)
       }
     } catch (err) {
       console.error("Error:", err)
@@ -575,8 +694,70 @@ export default function ArepaDeliveryManager() {
   return (
     <div className="min-h-screen bg-gray-50 p-4">
       <div className="max-w-6xl mx-auto">
+        {/* Panel de diagnóstico */}
+        <Card className="mb-4 border-2 border-blue-200">
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-lg flex items-center gap-2">
+                {connectionStatus.isConnected && !error ? (
+                  <CheckCircle className="w-5 h-5 text-green-500" />
+                ) : (
+                  <AlertCircle className="w-5 h-5 text-red-500" />
+                )}
+                Estado de Conexión
+              </CardTitle>
+              <Button variant="outline" size="sm" onClick={() => setShowDiagnostic(!showDiagnostic)}>
+                {showDiagnostic ? "Ocultar" : "Ver"} Diagnóstico
+              </Button>
+            </div>
+          </CardHeader>
+          {showDiagnostic && (
+            <CardContent>
+              <div className="space-y-2 text-sm">
+                <div className="flex items-center gap-2">
+                  {connectionStatus.hasUrl ? (
+                    <CheckCircle className="w-4 h-4 text-green-500" />
+                  ) : (
+                    <AlertCircle className="w-4 h-4 text-red-500" />
+                  )}
+                  <span>URL de Supabase: {connectionStatus.hasUrl ? "✓ Configurada" : "✗ Faltante"}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  {connectionStatus.hasKey ? (
+                    <CheckCircle className="w-4 h-4 text-green-500" />
+                  ) : (
+                    <AlertCircle className="w-4 h-4 text-red-500" />
+                  )}
+                  <span>Clave de Supabase: {connectionStatus.hasKey ? "✓ Configurada" : "✗ Faltante"}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  {connectionStatus.isConnected && !error ? (
+                    <CheckCircle className="w-4 h-4 text-green-500" />
+                  ) : (
+                    <AlertCircle className="w-4 h-4 text-red-500" />
+                  )}
+                  <span>
+                    Conexión a base de datos: {connectionStatus.isConnected && !error ? "✓ Conectada" : "✗ Error"}
+                  </span>
+                </div>
+                {supabaseUrl && (
+                  <div className="text-xs text-gray-600 mt-2">
+                    <strong>URL:</strong> {supabaseUrl}
+                  </div>
+                )}
+                {supabaseKey && (
+                  <div className="text-xs text-gray-600">
+                    <strong>Clave:</strong> {supabaseKey.substring(0, 20)}...
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          )}
+        </Card>
+
         {error && (
           <Alert className="mb-4">
+            <AlertCircle className="h-4 w-4" />
             <AlertDescription>{error}</AlertDescription>
           </Alert>
         )}
@@ -994,8 +1175,7 @@ export default function ArepaDeliveryManager() {
                     <div className="bg-blue-50 p-3 rounded-lg mb-4">
                       <p className="text-sm text-blue-800">
                         💡 <strong>Tip:</strong> Arrastra las tarjetas de pedidos para cambiar el orden de entrega, o
-                        usa el botón "Organizar Ruta" para una vista más cómoda. Los datos se guardan automáticamente en
-                        la nube.
+                        usa el botón "Organizar Ruta" para una vista más cómoda.
                       </p>
                     </div>
 
