@@ -19,11 +19,12 @@ import {
   Calendar,
   ChevronLeft,
   ChevronRight,
+  TrendingUp,
+  Package,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -55,14 +56,16 @@ interface Order {
   createdAt: string
 }
 
+// PRECIOS ACTUALIZADOS
 const PRODUCTS = [
-  { name: "Arepas de maíz", units: ["unidades"], price: 1500 },
-  { name: "Kilos de masa de maíz", units: ["kilos"], price: 4000 },
-  { name: "Queso tipo paisa", units: ["kilo", "libra"], price: { kilo: 18000, libra: 8000 } },
-  { name: "Queso semiduro", units: ["kilo", "libra"], price: { kilo: 20000, libra: 9000 } },
-  { name: "Limones", units: ["unidades"], price: 500 },
-  { name: "Chorizos", units: ["unidades"], price: 3000 },
-  { name: "Mora", units: ["kilos"], price: 8000 },
+  { name: "Arepas de maíz", units: ["unidades"], price: 8000 },
+  { name: "Kilos de masa de maíz", units: ["kilos"], price: 8000 },
+  { name: "Queso tipo paisa", units: ["kilo", "libra"], price: { kilo: 24000, libra: 13000 } },
+  { name: "Queso semiduro", units: ["kilo", "libra"], price: { kilo: 24000, libra: 13000 } },
+  { name: "Requeson", units: ["unidades"], price: 10000 },
+  { name: "Limones", units: ["unidades"], price: 5000 },
+  { name: "Mora", units: ["unidades"], price: 6000 },
+  { name: "Chorizos", units: ["unidades"], price: 20000 },
 ]
 
 const DAYS_OF_WEEK = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"]
@@ -71,7 +74,7 @@ const DAYS_OF_WEEK = ["lunes", "martes", "miércoles", "jueves", "viernes", "sá
 const getWeekStart = (date: Date): Date => {
   const d = new Date(date)
   const day = d.getDay()
-  const diff = d.getDate() - day + (day === 0 ? -6 : 1) // Ajustar para que lunes sea el primer día
+  const diff = d.getDate() - day + (day === 0 ? -6 : 1)
   return new Date(d.setDate(diff))
 }
 
@@ -80,10 +83,11 @@ const formatWeek = (weekStart: Date): string => {
   const weekEnd = new Date(weekStart)
   weekEnd.setDate(weekStart.getDate() + 6)
 
-  const startMonth = weekStart.toLocaleDateString("es-CO", { month: "short", day: "numeric" })
-  const endMonth = weekEnd.toLocaleDateString("es-CO", { month: "short", day: "numeric" })
+  const startDay = weekStart.getDate()
+  const endDay = weekEnd.getDate()
+  const month = weekStart.toLocaleDateString("es-CO", { month: "short" })
 
-  return `${startMonth} - ${endMonth}`
+  return `${startDay} - ${endDay} ${month}`
 }
 
 // Función para obtener la clave de la semana
@@ -117,7 +121,7 @@ export default function ArepaDeliveryManager() {
     totalAmount: 0,
   })
 
-  // Sincronización automática simple
+  // Sincronización automática
   useEffect(() => {
     loadOrders()
 
@@ -140,10 +144,8 @@ export default function ArepaDeliveryManager() {
         const data = await response.json()
         const loadedOrders = data.orders || []
 
-        // Solo actualizar si hay cambios reales
         if (JSON.stringify(loadedOrders) !== JSON.stringify(orders)) {
           setOrders(loadedOrders)
-          // Backup en localStorage
           localStorage.setItem("arepa-orders", JSON.stringify(loadedOrders))
         }
         setIsConnected(true)
@@ -152,7 +154,6 @@ export default function ArepaDeliveryManager() {
       }
     } catch (err) {
       console.error("Error loading orders:", err)
-      // Usar localStorage como backup solo si no hay datos
       if (orders.length === 0) {
         const savedOrders = localStorage.getItem("arepa-orders")
         if (savedOrders) {
@@ -187,7 +188,6 @@ export default function ArepaDeliveryManager() {
       }
     } catch (err) {
       console.error("Error saving order:", err)
-      // Guardar localmente si falla la conexión
       setOrders((prevOrders) => {
         const filteredOrders = prevOrders.filter((o) => o.id !== order.id)
         const updatedOrders = [...filteredOrders, order].sort(
@@ -481,24 +481,24 @@ export default function ArepaDeliveryManager() {
 
     return (
       <Card
-        className={`mb-4 cursor-move transition-all duration-200 ${
-          order.isDelivered ? "bg-green-50 border-green-200" : ""
+        className={`mb-3 cursor-move transition-all duration-200 ${
+          order.isDelivered ? "bg-green-50 border-green-200" : "bg-white"
         }`}
         draggable
         onDragStart={(e) => handleDragStart(e, order.id)}
         onDragOver={handleDragOver}
         onDrop={(e) => handleDrop(e, order.id, order.deliveryDate)}
       >
-        <CardHeader className="pb-3">
+        <CardHeader className="pb-2">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <GripVertical className="w-4 h-4 text-gray-400" />
-              <Badge variant="outline" className="text-xs">
+              <Badge variant="outline" className="text-xs font-mono">
                 #{orderIndex + 1}
               </Badge>
-              <CardTitle className="text-lg">{order.customerName}</CardTitle>
+              <CardTitle className="text-base font-semibold">{order.customerName}</CardTitle>
               {order.isDelivered && (
-                <Badge className="bg-green-500">
+                <Badge className="bg-green-500 text-xs">
                   <Check className="w-3 h-3 mr-1" />
                   Entregado
                 </Badge>
@@ -514,17 +514,17 @@ export default function ArepaDeliveryManager() {
             </div>
           </div>
         </CardHeader>
-        <CardContent>
-          <div className="space-y-3">
-            <div className="flex items-center gap-2 text-sm">
-              <MapPin className="w-4 h-4 text-gray-500" />
-              <span>{order.address}</span>
+        <CardContent className="pt-0">
+          <div className="space-y-2">
+            <div className="flex items-start gap-2 text-sm">
+              <MapPin className="w-4 h-4 text-gray-500 mt-0.5 flex-shrink-0" />
+              <span className="text-gray-700">{order.address}</span>
             </div>
 
             <div className="flex items-center gap-4 text-sm">
               <div className="flex items-center gap-2">
                 <Clock className="w-4 h-4 text-gray-500" />
-                <span>
+                <span className="font-medium">
                   {order.deliveryTime} {order.timeFormat}
                 </span>
               </div>
@@ -537,26 +537,30 @@ export default function ArepaDeliveryManager() {
             </div>
 
             <div className="bg-gray-50 p-3 rounded-lg">
-              <h4 className="font-medium text-sm mb-2">Productos:</h4>
+              <div className="flex items-center gap-2 mb-2">
+                <Package className="w-4 h-4 text-gray-600" />
+                <h4 className="font-medium text-sm">Productos:</h4>
+              </div>
               <ul className="text-sm space-y-1">
                 {order.products.map((product, index) => (
-                  <li key={index} className="flex justify-between">
-                    <span>
+                  <li key={index} className="flex justify-between items-center">
+                    <span className="text-gray-700">
                       • {product.quantity} {product.unit} de {product.name}
                     </span>
-                    <span className="font-medium">${product.total.toLocaleString()}</span>
+                    <span className="font-semibold text-green-600">${product.total.toLocaleString()}</span>
                   </li>
                 ))}
               </ul>
-              <div className="border-t mt-2 pt-2 flex justify-between font-bold">
-                <span>Total:</span>
-                <span>${order.totalAmount.toLocaleString()}</span>
+              <div className="border-t mt-2 pt-2 flex justify-between items-center">
+                <span className="font-bold text-gray-800">Total:</span>
+                <span className="font-bold text-lg text-green-600">${order.totalAmount.toLocaleString()}</span>
               </div>
             </div>
 
             {order.notes && (
-              <div className="text-sm text-gray-600">
-                <strong>Notas:</strong> {order.notes}
+              <div className="text-sm bg-blue-50 p-2 rounded">
+                <strong className="text-blue-800">Notas:</strong>
+                <span className="text-blue-700 ml-1">{order.notes}</span>
               </div>
             )}
 
@@ -565,7 +569,7 @@ export default function ArepaDeliveryManager() {
                 <Button
                   size="sm"
                   onClick={() => markAsDelivered(order.id, "transferencia")}
-                  className="flex-1"
+                  className="flex-1 bg-blue-600 hover:bg-blue-700"
                   disabled={saving}
                 >
                   <DollarSign className="w-4 h-4 mr-1" />
@@ -575,7 +579,7 @@ export default function ArepaDeliveryManager() {
                   size="sm"
                   variant="outline"
                   onClick={() => markAsDelivered(order.id, "efectivo")}
-                  className="flex-1"
+                  className="flex-1 border-green-500 text-green-600 hover:bg-green-50"
                   disabled={saving}
                 >
                   <DollarSign className="w-4 h-4 mr-1" />
@@ -584,7 +588,9 @@ export default function ArepaDeliveryManager() {
               </div>
             ) : (
               <div className="flex items-center gap-2 pt-2">
-                <Badge variant="secondary">Pagado por {order.paymentMethod}</Badge>
+                <Badge variant="secondary" className="bg-green-100 text-green-800">
+                  Pagado por {order.paymentMethod}
+                </Badge>
               </div>
             )}
           </div>
@@ -614,20 +620,21 @@ export default function ArepaDeliveryManager() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 p-4">
-      <div className="max-w-6xl mx-auto">
+    <div className="min-h-screen bg-gray-50">
+      <div className="max-w-4xl mx-auto p-4">
+        {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-3">
-            <h1 className="text-3xl font-bold text-gray-900">Gestión de Entregas - Arepas</h1>
+            <h1 className="text-2xl md:text-3xl font-bold text-gray-900">Gestión de Entregas - Arepas</h1>
             {isConnected ? (
-              <CheckCircle className="w-6 h-6 text-green-500" title="Conectado" />
+              <CheckCircle className="w-5 h-5 text-green-500" title="Conectado" />
             ) : (
-              <AlertCircle className="w-6 h-6 text-yellow-500" title="Modo local" />
+              <AlertCircle className="w-5 h-5 text-yellow-500" title="Modo local" />
             )}
           </div>
           <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
             <DialogTrigger asChild>
-              <Button onClick={resetForm} disabled={saving}>
+              <Button onClick={resetForm} disabled={saving} className="bg-green-600 hover:bg-green-700">
                 <Plus className="w-4 h-4 mr-2" />
                 Nuevo Pedido
               </Button>
@@ -731,7 +738,7 @@ export default function ArepaDeliveryManager() {
                     <div>
                       <Label className="text-sm font-medium">Total del Pedido</Label>
                       <div className="mt-1 p-2 bg-green-100 rounded-md">
-                        <div className="text-2xl font-bold text-green-700">
+                        <div className="text-xl font-bold text-green-700">
                           ${newOrder.totalAmount?.toLocaleString() || 0}
                         </div>
                       </div>
@@ -938,21 +945,22 @@ export default function ArepaDeliveryManager() {
 
         {uniqueWeeks.length === 0 ? (
           <Card>
-            <CardContent className="text-center py-8">
-              <p className="text-gray-500">No hay pedidos programados</p>
+            <CardContent className="text-center py-12">
+              <Calendar className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+              <p className="text-gray-500 text-lg">No hay pedidos programados</p>
               <p className="text-sm text-gray-400 mt-2">Haz clic en "Nuevo Pedido" para comenzar</p>
             </CardContent>
           </Card>
         ) : (
-          <div className="space-y-6">
-            {/* Navegación de semanas */}
-            <Card>
-              <CardHeader>
+          <div className="space-y-4">
+            {/* Navegación de semanas mejorada */}
+            <Card className="bg-gradient-to-r from-blue-50 to-purple-50">
+              <CardHeader className="pb-3">
                 <div className="flex items-center justify-between">
-                  <CardTitle className="flex items-center gap-2">
-                    <Calendar className="w-5 h-5" />
-                    Portafolio Semanal
-                  </CardTitle>
+                  <div className="flex items-center gap-2">
+                    <Calendar className="w-5 h-5 text-blue-600" />
+                    <CardTitle className="text-lg text-blue-900">Portafolio Semanal</CardTitle>
+                  </div>
                   <div className="flex items-center gap-2">
                     <Button
                       variant="outline"
@@ -964,6 +972,7 @@ export default function ArepaDeliveryManager() {
                         }
                       }}
                       disabled={uniqueWeeks.indexOf(selectedWeek) >= uniqueWeeks.length - 1}
+                      className="text-xs"
                     >
                       <ChevronLeft className="w-4 h-4" />
                       Anterior
@@ -978,6 +987,7 @@ export default function ArepaDeliveryManager() {
                         }
                       }}
                       disabled={uniqueWeeks.indexOf(selectedWeek) <= 0}
+                      className="text-xs"
                     >
                       Siguiente
                       <ChevronRight className="w-4 h-4" />
@@ -987,73 +997,88 @@ export default function ArepaDeliveryManager() {
               </CardHeader>
             </Card>
 
-            {/* Tabs de semanas */}
-            <Tabs value={selectedWeek} onValueChange={setSelectedWeek} className="w-full">
-              <TabsList
-                className="grid w-full"
-                style={{ gridTemplateColumns: `repeat(${Math.min(uniqueWeeks.length, 3)}, 1fr)` }}
-              >
-                {uniqueWeeks.slice(0, 3).map((weekKey) => {
-                  const weekStart = new Date(weekKey + "T00:00:00")
-                  const totals = getTotalsByWeek(weekKey)
-                  return (
-                    <TabsTrigger key={weekKey} value={weekKey} className="flex flex-col items-center gap-1 p-3">
-                      <span className="text-sm font-medium">Semana {formatWeek(weekStart)}</span>
-                      <div className="flex gap-2">
-                        <Badge variant="secondary" className="text-xs">
-                          {totals.totalOrders} pedidos
-                        </Badge>
-                        <Badge variant="outline" className="text-xs">
-                          ${totals.total.toLocaleString()}
-                        </Badge>
-                      </div>
-                    </TabsTrigger>
-                  )
-                })}
-              </TabsList>
-
+            {/* Selector de semanas horizontal */}
+            <div className="flex gap-2 overflow-x-auto pb-2">
               {uniqueWeeks.map((weekKey) => {
                 const weekStart = new Date(weekKey + "T00:00:00")
-                const weekTotals = getTotalsByWeek(weekKey)
-                const datesInWeek = getUniqueDatesInWeek(weekKey)
+                const totals = getTotalsByWeek(weekKey)
+                const isSelected = selectedWeek === weekKey
 
                 return (
-                  <TabsContent key={weekKey} value={weekKey} className="mt-6">
-                    <div className="space-y-6">
+                  <Card
+                    key={weekKey}
+                    className={`min-w-[200px] cursor-pointer transition-all ${
+                      isSelected ? "bg-blue-100 border-blue-300 shadow-md" : "bg-white hover:bg-gray-50 border-gray-200"
+                    }`}
+                    onClick={() => setSelectedWeek(weekKey)}
+                  >
+                    <CardContent className="p-3">
+                      <div className="text-center">
+                        <div className={`text-sm font-semibold ${isSelected ? "text-blue-900" : "text-gray-700"}`}>
+                          Semana {formatWeek(weekStart)}
+                        </div>
+                        <div className="flex justify-center gap-2 mt-2">
+                          <Badge variant={isSelected ? "default" : "secondary"} className="text-xs">
+                            {totals.totalOrders} pedidos
+                          </Badge>
+                          <Badge variant="outline" className="text-xs">
+                            ${totals.total.toLocaleString()}
+                          </Badge>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )
+              })}
+            </div>
+
+            {/* Contenido de la semana seleccionada */}
+            {selectedWeek && (
+              <div className="space-y-4">
+                {(() => {
+                  const weekStart = new Date(selectedWeek + "T00:00:00")
+                  const weekTotals = getTotalsByWeek(selectedWeek)
+                  const datesInWeek = getUniqueDatesInWeek(selectedWeek)
+
+                  return (
+                    <>
                       {/* Resumen de la semana */}
-                      <Card className="bg-gradient-to-r from-blue-50 to-purple-50">
+                      <Card className="bg-gradient-to-r from-green-50 to-blue-50">
                         <CardHeader>
-                          <CardTitle className="text-xl">Semana del {formatWeek(weekStart)}</CardTitle>
+                          <CardTitle className="text-xl flex items-center gap-2">
+                            <TrendingUp className="w-5 h-5 text-green-600" />
+                            Semana del {formatWeek(weekStart)}
+                          </CardTitle>
                         </CardHeader>
                         <CardContent>
                           <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                             <div className="text-center">
                               <div className="text-2xl font-bold text-blue-600">{weekTotals.totalOrders}</div>
-                              <div className="text-sm text-gray-600">Total Pedidos</div>
+                              <div className="text-xs text-gray-600">Total Pedidos</div>
                             </div>
                             <div className="text-center">
                               <div className="text-2xl font-bold text-green-600">
                                 ${weekTotals.total.toLocaleString()}
                               </div>
-                              <div className="text-sm text-gray-600">Ventas Totales</div>
+                              <div className="text-xs text-gray-600">Ventas Totales</div>
                             </div>
                             <div className="text-center">
                               <div className="text-2xl font-bold text-emerald-600">
                                 ${weekTotals.delivered.toLocaleString()}
                               </div>
-                              <div className="text-sm text-gray-600">Ya Cobrado</div>
+                              <div className="text-xs text-gray-600">Ya Cobrado</div>
                             </div>
                             <div className="text-center">
                               <div className="text-2xl font-bold text-orange-600">
                                 ${weekTotals.pending.toLocaleString()}
                               </div>
-                              <div className="text-sm text-gray-600">Por Cobrar</div>
+                              <div className="text-xs text-gray-600">Por Cobrar</div>
                             </div>
                             <div className="text-center">
                               <div className="text-2xl font-bold text-purple-600">
                                 {weekTotals.deliveredOrders}/{weekTotals.totalOrders}
                               </div>
-                              <div className="text-sm text-gray-600">Entregados</div>
+                              <div className="text-xs text-gray-600">Entregados</div>
                             </div>
                           </div>
                         </CardContent>
@@ -1065,10 +1090,10 @@ export default function ArepaDeliveryManager() {
                         const dayTotals = getTotalsByDate(date)
 
                         return (
-                          <div key={date} className="space-y-4">
-                            <div className="flex items-center justify-between">
-                              <h3 className="text-lg font-semibold">{formatDate(date)}</h3>
-                              <div className="flex items-center gap-4">
+                          <div key={date} className="space-y-3">
+                            <div className="flex items-center justify-between bg-white p-3 rounded-lg shadow-sm">
+                              <h3 className="text-lg font-semibold text-gray-800">{formatDate(date)}</h3>
+                              <div className="flex items-center gap-3">
                                 <Button
                                   variant="outline"
                                   size="sm"
@@ -1083,7 +1108,7 @@ export default function ArepaDeliveryManager() {
                                   {dayOrders.filter((order) => order.isDelivered).length} de {dayOrders.length}{" "}
                                   entregados
                                 </div>
-                                <Badge variant="outline" className="text-sm">
+                                <Badge variant="outline" className="text-sm font-semibold">
                                   ${dayTotals.total.toLocaleString()}
                                 </Badge>
                               </div>
@@ -1095,11 +1120,11 @@ export default function ArepaDeliveryManager() {
                           </div>
                         )
                       })}
-                    </div>
-                  </TabsContent>
-                )
-              })}
-            </Tabs>
+                    </>
+                  )
+                })()}
+              </div>
+            )}
           </div>
         )}
       </div>
