@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import {
   Plus,
   MapPin,
@@ -58,6 +58,7 @@ interface Order {
   notes?: string
   totalAmount: number
   createdAt: string
+  updatedAt?: string
 }
 
 // PRECIOS ACTUALIZADOS
@@ -111,6 +112,7 @@ export default function ArepaDeliveryManager() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [isConnected, setIsConnected] = useState(false)
+  const [lastSyncTime, setLastSyncTime] = useState<number>(0)
 
   const [newOrder, setNewOrder] = useState<Partial<Order>>({
     customerName: "",
@@ -124,93 +126,133 @@ export default function ArepaDeliveryManager() {
     totalAmount: 0,
   })
 
-  // Sincronización automática
+  // Cargar datos iniciales
   useEffect(() => {
     loadOrders()
+  }, [])
 
+  // Sincronización automática optimizada (solo cada 30 segundos y cuando no hay actividad)
+  useEffect(() => {
     const interval = setInterval(() => {
-      if (!isDialogOpen && !isRouteDialogOpen && !saving) {
-        loadOrders(true)
+      // Solo sincronizar si no hay modales abiertos, no se está guardando, y han pasado al menos 30 segundos
+      const now = Date.now()
+      if (!isDialogOpen && !isRouteDialogOpen && !saving && now - lastSyncTime > 30000) {
+        loadOrders(true) // Carga silenciosa
       }
-    }, 5000)
+    }, 30000) // Cada 30 segundos en lugar de 5
 
     return () => clearInterval(interval)
-  }, [isDialogOpen, isRouteDialogOpen, saving])
+  }, [isDialogOpen, isRouteDialogOpen, saving, lastSyncTime])
 
-  const loadOrders = async (silent = false) => {
-    try {
-      if (!silent) setLoading(true)
+  const loadOrders = useCallback(
+    async (silent = false) => {
+      try {
+        if (!silent) setLoading(true)
 
-      const response = await fetch("/api/orders")
+        const response = await fetch("/api/orders", {
+          method: "GET",
+          headers: {
+            "Cache-Control": "no-cache",
+          },
+        })
 
-      if (response.ok) {
-        const data = await response.json()
-        const loadedOrders = data.orders || []
+        if (response.ok) {
+          const data = await response.json()
+          const loadedOrders = data.orders || []
 
-        if (JSON.stringify(loadedOrders) !== JSON.stringify(orders)) {
-          setOrders(loadedOrders)
-          localStorage.setItem("arepa-orders", JSON.stringify(loadedOrders))
+          // Solo actualizar si hay cambios reales para evitar re-renders innecesarios
+          setOrders((currentOrders) => {
+            const ordersChanged = JSON.stringify(loadedOrders) !== JSON.stringify(currentOrders)
+            if (ordersChanged) {
+              // Backup en localStorage
+              localStorage.setItem("arepa-orders", JSON.stringify(loadedOrders))
+              return loadedOrders
+            }
+            return currentOrders
+          })
+
+          setIsConnected(true)
+          setLastSyncTime(Date.now())
+        } else {
+          throw new Error("Error de servidor")
         }
-        setIsConnected(true)
-      } else {
-        throw new Error("Error de servidor")
-      }
-    } catch (err) {
-      console.error("Error loading orders:", err)
-      if (orders.length === 0) {
-        const savedOrders = localStorage.getItem("arepa-orders")
-        if (savedOrders) {
-          const parsedOrders = JSON.parse(savedOrders)
-          setOrders(parsedOrders)
+      } catch (err) {
+        console.error("Error loading orders:", err)
+        // Usar localStorage como backup solo si no hay datos o es la primera carga
+        if (orders.length === 0 || !silent) {
+          const savedOrders = localStorage.getItem("arepa-orders")
+          if (savedOrders) {
+            try {
+              const parsedOrders = JSON.parse(savedOrders)
+              setOrders(parsedOrders)
+            } catch (parseError) {
+              console.error("Error parsing saved orders:", parseError)
+            }
+          }
         }
+        setIsConnected(false)
+      } finally {
+        if (!silent) setLoading(false)
       }
-      setIsConnected(false)
-    } finally {
-      if (!silent) setLoading(false)
-    }
-  }
+    },
+    [orders.length],
+  )
 
-  const saveOrder = async (order: Order) => {
+  const saveOrder = useCallback(async (order: Order) => {
     try {
       setSaving(true)
 
+      // Actualizar inmediatamente en el estado local para mejor UX
+      setOrders((prevOrders) => {
+        const filteredOrders = prevOrders.filter((o) => o.id !== order.id)
+        const updatedOrders = [...filteredOrders, { ...order, updatedAt: new Date().toISOString() }].sort(
+          (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+        )
+        // Backup inmediato en localStorage
+        localStorage.setItem("arepa-orders", JSON.stringify(updatedOrders))
+        return updatedOrders
+      })
+
+      // Intentar guardar en el servidor
       const response = await fetch("/api/orders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ order }),
+        body: JSON.stringify({ order: { ...order, updatedAt: new Date().toISOString() } }),
       })
 
       if (response.ok) {
         const data = await response.json()
-        const updatedOrders = data.orders || []
-        setOrders(updatedOrders)
+        const serverOrders = data.orders || []
+        setOrders(serverOrders)
         setIsConnected(true)
-        localStorage.setItem("arepa-orders", JSON.stringify(updatedOrders))
+        localStorage.setItem("arepa-orders", JSON.stringify(serverOrders))
+        setLastSyncTime(Date.now())
       } else {
-        throw new Error("Error al guardar")
+        throw new Error("Error al guardar en servidor")
       }
     } catch (err) {
       console.error("Error saving order:", err)
-      setOrders((prevOrders) => {
-        const filteredOrders = prevOrders.filter((o) => o.id !== order.id)
-        const updatedOrders = [...filteredOrders, order].sort(
-          (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-        )
-        localStorage.setItem("arepa-orders", JSON.stringify(updatedOrders))
-        return updatedOrders
-      })
       setIsConnected(false)
+      // Los datos ya están guardados localmente, así que no se pierden
     } finally {
       setSaving(false)
     }
-  }
+  }, [])
 
-  const deleteOrder = async (orderId: string) => {
+  const deleteOrder = useCallback(async (orderId: string) => {
     if (!confirm("¿Estás seguro de que quieres eliminar este pedido?")) return
 
     try {
       setSaving(true)
 
+      // Actualizar inmediatamente en el estado local
+      setOrders((prevOrders) => {
+        const updatedOrders = prevOrders.filter((order) => order.id !== orderId)
+        localStorage.setItem("arepa-orders", JSON.stringify(updatedOrders))
+        return updatedOrders
+      })
+
+      // Intentar eliminar en el servidor
       const response = await fetch("/api/orders", {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
@@ -219,21 +261,18 @@ export default function ArepaDeliveryManager() {
 
       if (response.ok) {
         const data = await response.json()
-        const updatedOrders = data.orders || []
-        setOrders(updatedOrders)
-        localStorage.setItem("arepa-orders", JSON.stringify(updatedOrders))
+        const serverOrders = data.orders || []
+        setOrders(serverOrders)
+        localStorage.setItem("arepa-orders", JSON.stringify(serverOrders))
+        setLastSyncTime(Date.now())
       }
     } catch (err) {
       console.error("Error deleting order:", err)
-      setOrders((prevOrders) => {
-        const updatedOrders = prevOrders.filter((order) => order.id !== orderId)
-        localStorage.setItem("arepa-orders", JSON.stringify(updatedOrders))
-        return updatedOrders
-      })
+      setIsConnected(false)
     } finally {
       setSaving(false)
     }
-  }
+  }, [])
 
   // Calcular total del pedido
   useEffect(() => {
@@ -241,7 +280,7 @@ export default function ArepaDeliveryManager() {
     setNewOrder((prev) => ({ ...prev, totalAmount: total }))
   }, [newOrder.products])
 
-  const getProductPrice = (productName: string, unit: string): number => {
+  const getProductPrice = useCallback((productName: string, unit: string): number => {
     const product = PRODUCTS.find((p) => p.name === productName)
     if (!product) return 0
 
@@ -249,49 +288,56 @@ export default function ArepaDeliveryManager() {
       return product.price[unit as keyof typeof product.price] || 0
     }
     return product.price as number
-  }
+  }, [])
 
-  const addProduct = () => {
+  const addProduct = useCallback(() => {
     setNewOrder((prev) => ({
       ...prev,
       products: [...(prev.products || []), { name: "", quantity: 1, unit: "unidades", price: 0, total: 0 }],
     }))
-  }
+  }, [])
 
-  const updateProduct = (index: number, field: keyof Product, value: string | number) => {
-    setNewOrder((prev) => {
-      const updatedProducts =
-        prev.products?.map((product, i) => {
-          if (i === index) {
-            const updatedProduct = { ...product, [field]: value }
+  const updateProduct = useCallback(
+    (index: number, field: keyof Product, value: string | number) => {
+      setNewOrder((prev) => {
+        const updatedProducts = [...(prev.products || [])]
 
-            if (field === "name" || field === "unit") {
-              const price = getProductPrice(updatedProduct.name, updatedProduct.unit)
-              updatedProduct.price = price
-              updatedProduct.total = price * updatedProduct.quantity
-            }
+        if (updatedProducts[index]) {
+          const updatedProduct = { ...updatedProducts[index] }
 
-            if (field === "quantity") {
-              updatedProduct.total = updatedProduct.price * updatedProduct.quantity
-            }
-
-            return updatedProduct
+          // Actualizar el campo específico
+          if (field === "quantity") {
+            updatedProduct.quantity = Math.max(1, Number(value) || 1) // Asegurar mínimo 1
+          } else {
+            updatedProduct[field] = value as any
           }
-          return product
-        }) || []
 
-      return { ...prev, products: updatedProducts }
-    })
-  }
+          // Recalcular precio y total cuando cambie el producto, unidad o cantidad
+          if (field === "name" || field === "unit") {
+            const price = getProductPrice(updatedProduct.name, updatedProduct.unit)
+            updatedProduct.price = price
+            updatedProduct.total = price * updatedProduct.quantity
+          } else if (field === "quantity") {
+            updatedProduct.total = updatedProduct.price * updatedProduct.quantity
+          }
 
-  const removeProduct = (index: number) => {
+          updatedProducts[index] = updatedProduct
+        }
+
+        return { ...prev, products: updatedProducts }
+      })
+    },
+    [getProductPrice],
+  )
+
+  const removeProduct = useCallback((index: number) => {
     setNewOrder((prev) => ({
       ...prev,
       products: prev.products?.filter((_, i) => i !== index) || [],
     }))
-  }
+  }, [])
 
-  const handleSaveOrder = async () => {
+  const handleSaveOrder = useCallback(async () => {
     if (
       !newOrder.customerName ||
       !newOrder.address ||
@@ -322,14 +368,15 @@ export default function ArepaDeliveryManager() {
       routeOrder: editingOrder?.routeOrder || maxRouteOrder + 1,
       totalAmount: newOrder.totalAmount!,
       createdAt: editingOrder?.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
     }
 
     await saveOrder(orderToSave)
     resetForm()
     setIsDialogOpen(false)
-  }
+  }, [newOrder, editingOrder, saveOrder])
 
-  const resetForm = () => {
+  const resetForm = useCallback(() => {
     setNewOrder({
       customerName: "",
       address: "",
@@ -342,9 +389,9 @@ export default function ArepaDeliveryManager() {
       totalAmount: 0,
     })
     setEditingOrder(null)
-  }
+  }, [])
 
-  const editOrder = (order: Order) => {
+  const editOrder = useCallback((order: Order) => {
     setEditingOrder(order)
     setNewOrder({
       customerName: order.customerName,
@@ -358,37 +405,55 @@ export default function ArepaDeliveryManager() {
       totalAmount: order.totalAmount,
     })
     setIsDialogOpen(true)
-  }
+  }, [])
 
-  const markAsDelivered = async (orderId: string, paymentMethod: "transferencia" | "efectivo") => {
-    const order = orders.find((o) => o.id === orderId)
-    if (order) {
-      const updatedOrder = { ...order, isDelivered: true, paymentMethod }
-      await saveOrder(updatedOrder)
-    }
-  }
+  const markAsDelivered = useCallback(
+    async (orderId: string, paymentMethod: "transferencia" | "efectivo") => {
+      const order = orders.find((o) => o.id === orderId)
+      if (order) {
+        // IMPORTANTE: Mantener todos los datos del pedido, solo cambiar el estado de entrega
+        const updatedOrder: Order = {
+          ...order, // Mantener TODOS los datos existentes
+          isDelivered: true,
+          paymentMethod,
+          updatedAt: new Date().toISOString(),
+        }
+        await saveOrder(updatedOrder)
+      }
+    },
+    [orders, saveOrder],
+  )
 
   // Funciones para manejo de semanas
-  const getOrdersByWeek = (weekKey: string) => {
-    return orders.filter((order) => getWeekKey(order.deliveryDate) === weekKey)
-  }
+  const getOrdersByWeek = useCallback(
+    (weekKey: string) => {
+      return orders.filter((order) => getWeekKey(order.deliveryDate) === weekKey)
+    },
+    [orders],
+  )
 
-  const getOrdersByDate = (date: string) => {
-    return orders.filter((order) => order.deliveryDate === date).sort((a, b) => a.routeOrder - b.routeOrder)
-  }
+  const getOrdersByDate = useCallback(
+    (date: string) => {
+      return orders.filter((order) => order.deliveryDate === date).sort((a, b) => a.routeOrder - b.routeOrder)
+    },
+    [orders],
+  )
 
-  const getUniqueWeeks = () => {
+  const getUniqueWeeks = useCallback(() => {
     const weeks = [...new Set(orders.map((order) => getWeekKey(order.deliveryDate)))].sort().reverse()
     return weeks
-  }
+  }, [orders])
 
-  const getUniqueDatesInWeek = (weekKey: string) => {
-    const weekOrders = getOrdersByWeek(weekKey)
-    const dates = [...new Set(weekOrders.map((order) => order.deliveryDate))].sort()
-    return dates
-  }
+  const getUniqueDatesInWeek = useCallback(
+    (weekKey: string) => {
+      const weekOrders = getOrdersByWeek(weekKey)
+      const dates = [...new Set(weekOrders.map((order) => order.deliveryDate))].sort()
+      return dates
+    },
+    [getOrdersByWeek],
+  )
 
-  const formatDate = (dateString: string) => {
+  const formatDate = useCallback((dateString: string) => {
     const date = new Date(dateString + "T00:00:00")
     const dayName = DAYS_OF_WEEK[date.getDay()]
     const formattedDate = date.toLocaleDateString("es-CO", {
@@ -396,88 +461,111 @@ export default function ArepaDeliveryManager() {
       month: "long",
     })
     return `${dayName.charAt(0).toUpperCase() + dayName.slice(1)} ${formattedDate}`
-  }
+  }, [])
 
-  const getTotalsByWeek = (weekKey: string) => {
-    const weekOrders = getOrdersByWeek(weekKey)
-    const total = weekOrders.reduce((sum, order) => sum + order.totalAmount, 0)
-    const delivered = weekOrders.filter((order) => order.isDelivered).reduce((sum, order) => sum + order.totalAmount, 0)
-    return {
-      total,
-      delivered,
-      pending: total - delivered,
-      totalOrders: weekOrders.length,
-      deliveredOrders: weekOrders.filter((order) => order.isDelivered).length,
-    }
-  }
+  const getTotalsByWeek = useCallback(
+    (weekKey: string) => {
+      const weekOrders = getOrdersByWeek(weekKey)
+      const total = weekOrders.reduce((sum, order) => sum + order.totalAmount, 0)
+      const delivered = weekOrders
+        .filter((order) => order.isDelivered)
+        .reduce((sum, order) => sum + order.totalAmount, 0)
+      return {
+        total,
+        delivered,
+        pending: total - delivered,
+        totalOrders: weekOrders.length,
+        deliveredOrders: weekOrders.filter((order) => order.isDelivered).length,
+      }
+    },
+    [getOrdersByWeek],
+  )
 
-  const getTotalsByDate = (date: string) => {
-    const dayOrders = getOrdersByDate(date)
-    const total = dayOrders.reduce((sum, order) => sum + order.totalAmount, 0)
-    const delivered = dayOrders.filter((order) => order.isDelivered).reduce((sum, order) => sum + order.totalAmount, 0)
-    return { total, delivered, pending: total - delivered }
-  }
+  const getTotalsByDate = useCallback(
+    (date: string) => {
+      const dayOrders = getOrdersByDate(date)
+      const total = dayOrders.reduce((sum, order) => sum + order.totalAmount, 0)
+      const delivered = dayOrders
+        .filter((order) => order.isDelivered)
+        .reduce((sum, order) => sum + order.totalAmount, 0)
+      return { total, delivered, pending: total - delivered }
+    },
+    [getOrdersByDate],
+  )
 
   // Drag and drop
-  const handleDragStart = (e: React.DragEvent, orderId: string) => {
+  const handleDragStart = useCallback((e: React.DragEvent, orderId: string) => {
     setDraggedOrder(orderId)
     e.dataTransfer.effectAllowed = "move"
-  }
+  }, [])
 
-  const handleDragOver = (e: React.DragEvent) => {
+  const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault()
     e.dataTransfer.dropEffect = "move"
-  }
+  }, [])
 
-  const handleDrop = async (e: React.DragEvent, targetOrderId: string, date: string) => {
-    e.preventDefault()
+  const handleDrop = useCallback(
+    async (e: React.DragEvent, targetOrderId: string, date: string) => {
+      e.preventDefault()
 
-    if (!draggedOrder || draggedOrder === targetOrderId) {
+      if (!draggedOrder || draggedOrder === targetOrderId) {
+        setDraggedOrder(null)
+        return
+      }
+
+      const dayOrders = getOrdersByDate(date)
+      const draggedIndex = dayOrders.findIndex((order) => order.id === draggedOrder)
+      const targetIndex = dayOrders.findIndex((order) => order.id === targetOrderId)
+
+      if (draggedIndex === -1 || targetIndex === -1) return
+
+      const newOrders = [...dayOrders]
+      const [draggedItem] = newOrders.splice(draggedIndex, 1)
+      newOrders.splice(targetIndex, 0, draggedItem)
+
+      // Actualizar el orden de ruta para todos los pedidos del día
+      for (let i = 0; i < newOrders.length; i++) {
+        const updatedOrder = { ...newOrders[i], routeOrder: i + 1, updatedAt: new Date().toISOString() }
+        await saveOrder(updatedOrder)
+      }
+
       setDraggedOrder(null)
-      return
-    }
-
-    const dayOrders = getOrdersByDate(date)
-    const draggedIndex = dayOrders.findIndex((order) => order.id === draggedOrder)
-    const targetIndex = dayOrders.findIndex((order) => order.id === targetOrderId)
-
-    if (draggedIndex === -1 || targetIndex === -1) return
-
-    const newOrders = [...dayOrders]
-    const [draggedItem] = newOrders.splice(draggedIndex, 1)
-    newOrders.splice(targetIndex, 0, draggedItem)
-
-    for (let i = 0; i < newOrders.length; i++) {
-      const updatedOrder = { ...newOrders[i], routeOrder: i + 1 }
-      await saveOrder(updatedOrder)
-    }
-
-    setDraggedOrder(null)
-  }
+    },
+    [draggedOrder, getOrdersByDate, saveOrder],
+  )
 
   // Organizador de rutas
-  const openRouteOrganizer = (date: string) => {
-    const dayOrders = getOrdersByDate(date)
-    setRouteOrders([...dayOrders])
-    setIsRouteDialogOpen(true)
-  }
+  const openRouteOrganizer = useCallback(
+    (date: string) => {
+      const dayOrders = getOrdersByDate(date)
+      setRouteOrders([...dayOrders])
+      setIsRouteDialogOpen(true)
+    },
+    [getOrdersByDate],
+  )
 
-  const moveOrderInRoute = (fromIndex: number, toIndex: number) => {
-    const newRouteOrders = [...routeOrders]
-    const [movedOrder] = newRouteOrders.splice(fromIndex, 1)
-    newRouteOrders.splice(toIndex, 0, movedOrder)
-    setRouteOrders(newRouteOrders)
-  }
+  const moveOrderInRoute = useCallback((fromIndex: number, toIndex: number) => {
+    setRouteOrders((prevRouteOrders) => {
+      const newRouteOrders = [...prevRouteOrders]
+      const [movedOrder] = newRouteOrders.splice(fromIndex, 1)
+      newRouteOrders.splice(toIndex, 0, movedOrder)
+      return newRouteOrders
+    })
+  }, [])
 
-  const saveRouteOrder = async () => {
+  const saveRouteOrder = useCallback(async () => {
     setSaving(true)
     for (let i = 0; i < routeOrders.length; i++) {
-      const updatedOrder = { ...routeOrders[i], routeOrder: i + 1 }
+      const updatedOrder = {
+        ...routeOrders[i],
+        routeOrder: i + 1,
+        updatedAt: new Date().toISOString(),
+      }
       await saveOrder(updatedOrder)
     }
     setSaving(false)
     setIsRouteDialogOpen(false)
-  }
+  }, [routeOrders, saveOrder])
 
   const OrderCard = ({ order, dayOrders }: { order: Order; dayOrders: Order[] }) => {
     const orderIndex = dayOrders.findIndex((o) => o.id === order.id)
@@ -791,9 +879,17 @@ export default function ArepaDeliveryManager() {
                             <Input
                               type="number"
                               value={product.quantity}
-                              onChange={(e) => updateProduct(index, "quantity", Number.parseInt(e.target.value) || 1)}
+                              onChange={(e) => {
+                                const value = e.target.value
+                                updateProduct(
+                                  index,
+                                  "quantity",
+                                  value === "" ? 1 : Math.max(1, Number.parseInt(value) || 1),
+                                )
+                              }}
                               className="mt-1"
                               min="1"
+                              step="1"
                             />
                           </div>
 
