@@ -1,6 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 
-// Simulamos una base de datos en memoria (en producción usarías una base de datos real)
+// Base de datos en memoria simple
 let orders: any[] = []
 
 export async function GET() {
@@ -20,18 +20,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Pedido requerido" }, { status: 400 })
     }
 
-    // Buscar si el pedido ya existe
     const existingIndex = orders.findIndex((o) => o.id === order.id)
 
     if (existingIndex >= 0) {
-      // Actualizar pedido existente
       orders[existingIndex] = order
     } else {
-      // Agregar nuevo pedido
       orders.push(order)
     }
 
-    // Ordenar por fecha de creación (más recientes primero)
     orders.sort((a, b) => new Date(b.createdAt || "").getTime() - new Date(a.createdAt || "").getTime())
 
     return NextResponse.json({ orders })
@@ -49,7 +45,6 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: "ID de pedido requerido" }, { status: 400 })
     }
 
-    // Filtrar el pedido a eliminar
     orders = orders.filter((order) => order.id !== orderId)
 
     return NextResponse.json({ orders })
