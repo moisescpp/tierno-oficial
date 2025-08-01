@@ -1,33 +1,33 @@
 import { type NextRequest, NextResponse } from "next/server"
-
-// Base de datos en memoria mejorada con persistencia
-let orders: any[] = []
-let isInitialized = false
-
-// Función para inicializar datos desde localStorage simulado
-const initializeData = () => {
-  if (!isInitialized) {
-    // En un entorno real, aquí cargarías desde una base de datos
-    // Por ahora mantenemos los datos en memoria durante la sesión del servidor
-    isInitialized = true
-  }
-}
+import { supabase, toDatabase, fromDatabase } from "@/lib/supabase"
 
 export async function GET() {
   try {
-    initializeData()
+    // Intentar obtener datos de Supabase
+    const { data: supabaseOrders, error } = await supabase
+      .from("orders")
+      .select("*")
+      .order("created_at", { ascending: false })
 
-    // Devolver todos los pedidos ordenados por fecha de creación (más recientes primero)
-    const sortedOrders = [...orders].sort((a, b) => {
-      const dateA = new Date(a.createdAt || "").getTime()
-      const dateB = new Date(b.createdAt || "").getTime()
-      return dateB - dateA
-    })
+    if (error) {
+      console.error("Supabase error:", error)
+      // Fallback a localStorage si Supabase falla
+      return NextResponse.json({
+        orders: [],
+        source: "fallback",
+        error: "Database connection failed",
+        timestamp: new Date().toISOString(),
+      })
+    }
+
+    // Convertir formato de base de datos a formato de la app
+    const orders = supabaseOrders.map(fromDatabase)
 
     return NextResponse.json({
-      orders: sortedOrders,
+      orders,
+      source: "supabase",
       timestamp: new Date().toISOString(),
-      total: sortedOrders.length,
+      total: orders.length,
     })
   } catch (error) {
     console.error("Error getting orders:", error)
@@ -35,6 +35,7 @@ export async function GET() {
       {
         error: "Error al obtener pedidos",
         orders: [],
+        source: "error",
         timestamp: new Date().toISOString(),
       },
       { status: 500 },
@@ -44,106 +45,91 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
-    initializeData()
-
     const { order } = await request.json()
 
     if (!order || !order.id) {
-      return NextResponse.json(
-        {
-          error: "Pedido con ID requerido",
-          orders: orders,
-        },
-        { status: 400 },
-      )
+      return NextResponse.json({ error: "Pedido con ID requerido" }, { status: 400 })
     }
 
-    // Buscar si el pedido ya existe
-    const existingIndex = orders.findIndex((o) => o.id === order.id)
-    const now = new Date().toISOString()
+    // Convertir a formato de base de datos
+    const dbOrder = toDatabase(order)
 
-    if (existingIndex >= 0) {
-      // Actualizar pedido existente manteniendo la fecha de creación original
-      orders[existingIndex] = {
-        ...order,
-        updatedAt: now,
-        createdAt: orders[existingIndex].createdAt || now,
-      }
-    } else {
-      // Agregar nuevo pedido
-      orders.push({
-        ...order,
-        createdAt: order.createdAt || now,
-        updatedAt: now,
+    // Intentar guardar en Supabase
+    const { data, error } = await supabase
+      .from("orders")
+      .upsert(dbOrder, {
+        onConflict: "id",
+        ignoreDuplicates: false,
       })
+      .select()
+
+    if (error) {
+      console.error("Supabase save error:", error)
+      return NextResponse.json({ error: "Error al guardar en base de datos" }, { status: 500 })
     }
 
-    // Devolver todos los pedidos ordenados
-    const sortedOrders = [...orders].sort((a, b) => {
-      const dateA = new Date(a.createdAt || "").getTime()
-      const dateB = new Date(b.createdAt || "").getTime()
-      return dateB - dateA
-    })
+    // Obtener todos los pedidos actualizados
+    const { data: allOrders, error: fetchError } = await supabase
+      .from("orders")
+      .select("*")
+      .order("created_at", { ascending: false })
+
+    if (fetchError) {
+      console.error("Supabase fetch error:", fetchError)
+      return NextResponse.json({ error: "Error al obtener pedidos actualizados" }, { status: 500 })
+    }
+
+    const orders = allOrders.map(fromDatabase)
 
     return NextResponse.json({
-      orders: sortedOrders,
-      message: existingIndex >= 0 ? "Pedido actualizado" : "Pedido creado",
-      timestamp: now,
+      orders,
+      message: "Pedido guardado exitosamente",
+      source: "supabase",
+      timestamp: new Date().toISOString(),
     })
   } catch (error) {
     console.error("Error saving order:", error)
-    return NextResponse.json(
-      {
-        error: "Error al guardar pedido",
-        orders: orders,
-      },
-      { status: 500 },
-    )
+    return NextResponse.json({ error: "Error al guardar pedido" }, { status: 500 })
   }
 }
 
 export async function DELETE(request: NextRequest) {
   try {
-    initializeData()
-
     const { orderId } = await request.json()
 
     if (!orderId) {
-      return NextResponse.json(
-        {
-          error: "ID de pedido requerido",
-          orders: orders,
-        },
-        { status: 400 },
-      )
+      return NextResponse.json({ error: "ID de pedido requerido" }, { status: 400 })
     }
 
-    // Filtrar el pedido a eliminar
-    const initialLength = orders.length
-    orders = orders.filter((order) => order.id !== orderId)
+    // Eliminar de Supabase
+    const { error } = await supabase.from("orders").delete().eq("id", orderId)
 
-    const wasDeleted = orders.length < initialLength
+    if (error) {
+      console.error("Supabase delete error:", error)
+      return NextResponse.json({ error: "Error al eliminar de base de datos" }, { status: 500 })
+    }
 
-    // Devolver todos los pedidos restantes ordenados
-    const sortedOrders = [...orders].sort((a, b) => {
-      const dateA = new Date(a.createdAt || "").getTime()
-      const dateB = new Date(b.createdAt || "").getTime()
-      return dateB - dateA
-    })
+    // Obtener todos los pedidos actualizados
+    const { data: allOrders, error: fetchError } = await supabase
+      .from("orders")
+      .select("*")
+      .order("created_at", { ascending: false })
+
+    if (fetchError) {
+      console.error("Supabase fetch error:", fetchError)
+      return NextResponse.json({ error: "Error al obtener pedidos actualizados" }, { status: 500 })
+    }
+
+    const orders = allOrders.map(fromDatabase)
 
     return NextResponse.json({
-      orders: sortedOrders,
-      message: wasDeleted ? "Pedido eliminado" : "Pedido no encontrado",
+      orders,
+      message: "Pedido eliminado exitosamente",
+      source: "supabase",
       timestamp: new Date().toISOString(),
     })
   } catch (error) {
     console.error("Error deleting order:", error)
-    return NextResponse.json(
-      {
-        error: "Error al eliminar pedido",
-        orders: orders,
-      },
-      { status: 500 },
-    )
+    return NextResponse.json({ error: "Error al eliminar pedido" }, { status: 500 })
   }
 }
