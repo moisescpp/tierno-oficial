@@ -316,11 +316,10 @@ export default function ArepaDeliveryManager() {
         if (updatedProducts[index]) {
           const updatedProduct = { ...updatedProducts[index] }
 
-          // Actualizar el campo específico
+          // Actualizar el campo específico SIN validaciones restrictivas
           if (field === "quantity") {
-            // Permitir valores vacíos temporalmente para que el usuario pueda escribir
-            const numValue = value === "" ? "" : Number(value)
-            updatedProduct.quantity = numValue === "" ? 1 : Math.max(1, numValue || 1)
+            // Permitir cualquier número que escriba el usuario
+            updatedProduct.quantity = Number(value) || 1
           } else {
             updatedProduct[field] = value as any
           }
@@ -906,16 +905,8 @@ export default function ArepaDeliveryManager() {
                               type="number"
                               value={product.quantity}
                               onChange={(e) => {
-                                const value = e.target.value
-                                // Permitir que el usuario escriba sin restricciones inmediatas
-                                updateProduct(index, "quantity", value === "" ? 1 : Number(value))
-                              }}
-                              onBlur={(e) => {
-                                // Al perder el foco, asegurar que sea mínimo 1
-                                const value = Number(e.target.value)
-                                if (value < 1 || isNaN(value)) {
-                                  updateProduct(index, "quantity", 1)
-                                }
+                                // Simplemente pasar el valor sin restricciones
+                                updateProduct(index, "quantity", e.target.value)
                               }}
                               className="mt-1"
                               min="1"
