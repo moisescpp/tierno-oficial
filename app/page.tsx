@@ -23,6 +23,8 @@ import {
   Database,
   Wifi,
   WifiOff,
+  BarChart3,
+  ShoppingCart,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -58,6 +60,12 @@ interface Order {
   totalAmount: number
   createdAt: string
   updatedAt?: string
+}
+
+interface ProductSummary {
+  [productName: string]: {
+    [unit: string]: number
+  }
 }
 
 // PRECIOS ACTUALIZADOS
@@ -501,6 +509,106 @@ export default function ArepaDeliveryManager() {
     },
     [getOrdersByDate],
   )
+
+  // Nuevas funciones para calcular cantidades de productos
+  const getProductSummaryByDate = useCallback(
+    (date: string): ProductSummary => {
+      const dayOrders = getOrdersByDate(date)
+      const summary: ProductSummary = {}
+
+      dayOrders.forEach((order) => {
+        order.products.forEach((product) => {
+          if (!summary[product.name]) {
+            summary[product.name] = {}
+          }
+          if (!summary[product.name][product.unit]) {
+            summary[product.name][product.unit] = 0
+          }
+          summary[product.name][product.unit] += product.quantity
+        })
+      })
+
+      return summary
+    },
+    [getOrdersByDate],
+  )
+
+  const getProductSummaryByWeek = useCallback(
+    (weekKey: string): ProductSummary => {
+      const weekOrders = getOrdersByWeek(weekKey)
+      const summary: ProductSummary = {}
+
+      weekOrders.forEach((order) => {
+        order.products.forEach((product) => {
+          if (!summary[product.name]) {
+            summary[product.name] = {}
+          }
+          if (!summary[product.name][product.unit]) {
+            summary[product.name][product.unit] = 0
+          }
+          summary[product.name][product.unit] += product.quantity
+        })
+      })
+
+      return summary
+    },
+    [getOrdersByWeek],
+  )
+
+  // Componente para mostrar resumen de productos
+  const ProductSummaryCard = ({
+    title,
+    summary,
+    icon,
+  }: { title: string; summary: ProductSummary; icon: React.ReactNode }) => {
+    const hasProducts = Object.keys(summary).length > 0
+
+    if (!hasProducts) {
+      return (
+        <Card className="bg-gray-50">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm flex items-center gap-2 text-gray-600">
+              {icon}
+              {title}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-gray-500 text-center py-4">No hay productos registrados</p>
+          </CardContent>
+        </Card>
+      )
+    }
+
+    return (
+      <Card className="bg-gradient-to-br from-orange-50 to-yellow-50 border-orange-200">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm flex items-center gap-2 text-orange-800">
+            {icon}
+            {title}
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {Object.entries(summary).map(([productName, units]) => (
+              <div key={productName} className="bg-white p-3 rounded-lg shadow-sm border border-orange-100">
+                <h4 className="font-semibold text-sm text-gray-800 mb-2">{productName}</h4>
+                <div className="space-y-1">
+                  {Object.entries(units).map(([unit, quantity]) => (
+                    <div key={unit} className="flex justify-between items-center text-sm">
+                      <span className="text-gray-600 capitalize">{unit}:</span>
+                      <Badge variant="secondary" className="bg-orange-100 text-orange-800 font-bold">
+                        {quantity}
+                      </Badge>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+    )
+  }
 
   // Drag and drop
   const handleDragStart = useCallback((e: React.DragEvent, orderId: string) => {
@@ -1180,6 +1288,7 @@ export default function ArepaDeliveryManager() {
                   const weekStart = new Date(selectedWeek + "T00:00:00")
                   const weekTotals = getTotalsByWeek(selectedWeek)
                   const datesInWeek = getUniqueDatesInWeek(selectedWeek)
+                  const weekProductSummary = getProductSummaryByWeek(selectedWeek)
 
                   return (
                     <>
@@ -1225,10 +1334,18 @@ export default function ArepaDeliveryManager() {
                         </CardContent>
                       </Card>
 
+                      {/* Resumen de productos de la semana */}
+                      <ProductSummaryCard
+                        title="Resumen de Productos - Semana Completa"
+                        summary={weekProductSummary}
+                        icon={<BarChart3 className="w-4 h-4" />}
+                      />
+
                       {/* Pedidos por día */}
                       {datesInWeek.map((date) => {
                         const dayOrders = getOrdersByDate(date)
                         const dayTotals = getTotalsByDate(date)
+                        const dayProductSummary = getProductSummaryByDate(date)
 
                         return (
                           <div key={date} className="space-y-3">
@@ -1254,6 +1371,13 @@ export default function ArepaDeliveryManager() {
                                 </Badge>
                               </div>
                             </div>
+
+                            {/* Resumen de productos del día */}
+                            <ProductSummaryCard
+                              title={`Productos del ${formatDate(date)}`}
+                              summary={dayProductSummary}
+                              icon={<ShoppingCart className="w-4 h-4" />}
+                            />
 
                             {dayOrders.map((order) => (
                               <OrderCard key={order.id} order={order} dayOrders={dayOrders} />
