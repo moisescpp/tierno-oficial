@@ -20,10 +20,6 @@ import {
   ChevronRight,
   TrendingUp,
   Package,
-  Github,
-  Instagram,
-  Facebook,
-  Heart,
   Database,
   Wifi,
   WifiOff,
@@ -36,6 +32,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
+import { Footer } from "@/components/footer"
 
 interface Product {
   name: string
@@ -67,12 +64,11 @@ interface Order {
 const PRODUCTS = [
   { name: "Arepas de maíz", units: ["unidades"], price: 8000 },
   { name: "Kilos de masa de maíz", units: ["kilos"], price: 8000 },
-  { name: "Queso tipo paisa", units: ["kilo", "libra"], price: { kilo: 25000, libra: 13000 } },
-  { name: "Queso semiduro", units: ["kilo", "libra"], price: { kilo: 25000, libra: 13000 } },
-  { name: "Requesón", units: ["unidades"], price: 12000 },
+  { name: "Queso tipo paisa", units: ["kilo", "libra"], price: { kilo: 24000, libra: 13000 } },
+  { name: "Queso semiduro", units: ["kilo", "libra"], price: { kilo: 24000, libra: 13000 } },
+  { name: "Requeso", units: ["unidades"], price: 10000 },
   { name: "Limones", units: ["unidades"], price: 5000 },
-  { name: "Mora", units: ["unidades"], price: 6500 },
-  { name: "Chorizos", units: ["unidades"], price: 23000 },
+  { name: "Chorizos", units: ["unidades"], price: 20000 },
 ]
 
 const DAYS_OF_WEEK = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"]
@@ -1273,83 +1269,8 @@ export default function ArepaDeliveryManager() {
         )}
       </div>
 
-      {/* Footer Profesional */}
-      <footer className="mt-12 border-t bg-white">
-        <div className="max-w-4xl mx-auto px-4 py-8">
-          <div className="flex flex-col md:flex-row items-center justify-between gap-6">
-            {/* Información del desarrollador */}
-            <div className="text-center md:text-left">
-              <h3 className="text-lg font-semibold text-gray-800 mb-2">Desarrollado por Moisés Camilo Pérez Prieto</h3>
-              <p className="text-sm text-gray-600 flex items-center justify-center md:justify-start gap-1">
-                Hecho con <Heart className="w-4 h-4 text-red-500 fill-current" /> para optimizar tu negocio
-              </p>
-            </div>
-
-            {/* Redes sociales */}
-            <div className="flex items-center gap-4">
-              <span className="text-sm text-gray-600 font-medium">Sígueme en:</span>
-              <div className="flex gap-3">
-                <a
-                  href="https://github.com/moisescpp"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="p-2 rounded-full bg-gray-100 hover:bg-gray-800 text-gray-600 hover:text-white transition-all duration-200 group"
-                  title="GitHub"
-                >
-                  <Github className="w-5 h-5" />
-                </a>
-                <a
-                  href="https://instagram.com/moises26__"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="p-2 rounded-full bg-gray-100 hover:bg-gradient-to-r hover:from-purple-500 hover:to-pink-500 text-gray-600 hover:text-white transition-all duration-200 group"
-                  title="Instagram"
-                >
-                  <Instagram className="w-5 h-5" />
-                </a>
-                <a
-                  href="https://facebook.com/moises.perez.927399"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="p-2 rounded-full bg-gray-100 hover:bg-blue-600 text-gray-600 hover:text-white transition-all duration-200 group"
-                  title="Facebook"
-                >
-                  <Facebook className="w-5 h-5" />
-                </a>
-              </div>
-            </div>
-          </div>
-
-          {/* Línea divisoria y copyright */}
-          <div className="mt-6 pt-6 border-t border-gray-200">
-            <div className="flex flex-col md:flex-row items-center justify-between gap-4 text-sm text-gray-500">
-              <p>© 2025 Sistema de Gestión de Entregas y Pedidos. Todos los derechos reservados.</p>
-              <p className="flex items-center gap-2">
-                <span>Versión 2.1</span>
-                <span>•</span>
-                <span className="flex items-center gap-1">
-                  {dataSource === "supabase" ? (
-                    <>
-                      <Database className="w-4 h-4 text-green-500" />
-                      Supabase
-                    </>
-                  ) : dataSource === "localStorage" ? (
-                    <>
-                      <AlertCircle className="w-4 h-4 text-yellow-500" />
-                      Modo Local
-                    </>
-                  ) : (
-                    <>
-                      <AlertCircle className="w-4 h-4 text-red-500" />
-                      Error
-                    </>
-                  )}
-                </span>
-              </p>
-            </div>
-          </div>
-        </div>
-      </footer>
+      {/* Footer usando componente separado */}
+      <Footer isConnected={isConnected} dataSource={dataSource} />
     </div>
   )
 }
