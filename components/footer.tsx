@@ -2,9 +2,10 @@ import { Github, Instagram, Facebook, Heart, CheckCircle, AlertCircle } from "lu
 
 interface FooterProps {
   isConnected: boolean
+  dataSource: "supabase" | "localStorage" | "error"
 }
 
-export function Footer({ isConnected }: FooterProps) {
+export function Footer({ isConnected, dataSource }: FooterProps) {
   return (
     <footer className="mt-12 border-t bg-white shadow-sm">
       <div className="max-w-6xl mx-auto px-4 py-8">
@@ -22,29 +23,29 @@ export function Footer({ isConnected }: FooterProps) {
             <span className="text-sm text-gray-600 font-medium">Sígueme en:</span>
             <div className="flex gap-3">
               <a
-                href="https://github.com/moisescamilo"
+                href="https://github.com/moisescpp"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="p-3 rounded-full bg-gray-100 hover:bg-gray-800 text-gray-600 hover:text-white transition-all duration-300 transform hover:scale-110 shadow-sm hover:shadow-md"
-                title="GitHub - Moises Camilo"
+                title="GitHub - moisescpp"
               >
                 <Github className="w-5 h-5" />
               </a>
               <a
-                href="https://instagram.com/moisescamilo"
+                href="https://www.instagram.com/moises26__/"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="p-3 rounded-full bg-gray-100 hover:bg-gradient-to-r hover:from-purple-500 hover:to-pink-500 text-gray-600 hover:text-white transition-all duration-300 transform hover:scale-110 shadow-sm hover:shadow-md"
-                title="Instagram - @moisescamilo"
+                title="Instagram - @moises26__"
               >
                 <Instagram className="w-5 h-5" />
               </a>
               <a
-                href="https://facebook.com/moisescamilo"
+                href="https://www.facebook.com/moises.perez.927399/"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="p-3 rounded-full bg-gray-100 hover:bg-blue-600 text-gray-600 hover:text-white transition-all duration-300 transform hover:scale-110 shadow-sm hover:shadow-md"
-                title="Facebook - Moises Camilo"
+                title="Facebook - Moises Perez"
               >
                 <Facebook className="w-5 h-5" />
               </a>
@@ -67,15 +68,20 @@ export function Footer({ isConnected }: FooterProps) {
             <div className="flex items-center gap-4 text-sm text-gray-500">
               <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded-full text-xs font-medium">Versión 2.0</span>
               <div className="flex items-center gap-2">
-                {isConnected ? (
+                {dataSource === "supabase" ? (
                   <>
                     <CheckCircle className="w-4 h-4 text-green-500" />
-                    <span className="text-green-600 font-medium">Conectado</span>
+                    <span className="text-green-600 font-medium">Supabase</span>
                   </>
-                ) : (
+                ) : dataSource === "localStorage" ? (
                   <>
                     <AlertCircle className="w-4 h-4 text-yellow-500" />
                     <span className="text-yellow-600 font-medium">Modo Local</span>
+                  </>
+                ) : (
+                  <>
+                    <AlertCircle className="w-4 h-4 text-red-500" />
+                    <span className="text-red-600 font-medium">Error</span>
                   </>
                 )}
               </div>
