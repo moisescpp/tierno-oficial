@@ -22,7 +22,7 @@ export function Footer({ isConnected }: FooterProps) {
             <span className="text-sm text-gray-600 font-medium">Sígueme en:</span>
             <div className="flex gap-3">
               <a
-                href="https://github.com/moisescpp"
+                href="https://github.com/moisescamilo"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="p-3 rounded-full bg-gray-100 hover:bg-gray-800 text-gray-600 hover:text-white transition-all duration-300 transform hover:scale-110 shadow-sm hover:shadow-md"
@@ -31,20 +31,20 @@ export function Footer({ isConnected }: FooterProps) {
                 <Github className="w-5 h-5" />
               </a>
               <a
-                href="https://instagram.com/moises26__"
+                href="https://instagram.com/moisescamilo"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="p-3 rounded-full bg-gray-100 hover:bg-gradient-to-r hover:from-purple-500 hover:to-pink-500 text-gray-600 hover:text-white transition-all duration-300 transform hover:scale-110 shadow-sm hover:shadow-md"
-                title="Instagram - @moises26__"
+                title="Instagram - @moisescamilo"
               >
                 <Instagram className="w-5 h-5" />
               </a>
               <a
-                href="https://www.facebook.com/moises.perez.927399"
+                href="https://facebook.com/moisescamilo"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="p-3 rounded-full bg-gray-100 hover:bg-blue-600 text-gray-600 hover:text-white transition-all duration-300 transform hover:scale-110 shadow-sm hover:shadow-md"
-                title="Facebook - Moisés Pérez"
+                title="Facebook - Moises Camilo"
               >
                 <Facebook className="w-5 h-5" />
               </a>
@@ -57,7 +57,7 @@ export function Footer({ isConnected }: FooterProps) {
           <div className="flex flex-col md:flex-row items-center justify-between gap-4">
             <div className="text-center md:text-left">
               <p className="text-sm text-gray-500 mb-1">
-                © 2025 Sistema de Gestión de Entregas y Pedidos. Todos los derechos reservados.
+                © 2025 Sistema de Gestión de Entregas - Arepas. Todos los derechos reservados.
               </p>
               <p className="text-xs text-gray-400">
                 Aplicación web diseñada para optimizar la gestión de pedidos y entregas
