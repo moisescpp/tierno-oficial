@@ -67,12 +67,11 @@ interface Order {
 const PRODUCTS = [
   { name: "Arepas de maíz", units: ["unidades"], price: 8000 },
   { name: "Kilos de masa de maíz", units: ["kilos"], price: 8000 },
-  { name: "Queso tipo paisa", units: ["kilo", "libra"], price: { kilo: 25000, libra: 13000 } },
-  { name: "Queso semiduro", units: ["kilo", "libra"], price: { kilo: 25000, libra: 13000 } },
-  { name: "Requesón", units: ["unidades"], price: 12000 },
-  { name: "Limones", units: ["unidades"], price: 6000 },
-  { name: "Chorizos", units: ["unidades"], price: 23000 },
-  { name: "Mora", units: ["unidades"], price: 6500 },
+  { name: "Queso tipo paisa", units: ["kilo", "libra"], price: { kilo: 24000, libra: 13000 } },
+  { name: "Queso semiduro", units: ["kilo", "libra"], price: { kilo: 24000, libra: 13000 } },
+  { name: "Requeso", units: ["unidades"], price: 10000 },
+  { name: "Limones", units: ["unidades"], price: 5000 },
+  { name: "Chorizos", units: ["unidades"], price: 20000 },
 ]
 
 const DAYS_OF_WEEK = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"]
@@ -319,7 +318,9 @@ export default function ArepaDeliveryManager() {
 
           // Actualizar el campo específico
           if (field === "quantity") {
-            updatedProduct.quantity = Math.max(1, Number(value) || 1)
+            // Permitir valores vacíos temporalmente para que el usuario pueda escribir
+            const numValue = value === "" ? "" : Number(value)
+            updatedProduct.quantity = numValue === "" ? 1 : Math.max(1, numValue || 1)
           } else {
             updatedProduct[field] = value as any
           }
@@ -906,15 +907,20 @@ export default function ArepaDeliveryManager() {
                               value={product.quantity}
                               onChange={(e) => {
                                 const value = e.target.value
-                                updateProduct(
-                                  index,
-                                  "quantity",
-                                  value === "" ? 1 : Math.max(1, Number.parseInt(value) || 1),
-                                )
+                                // Permitir que el usuario escriba sin restricciones inmediatas
+                                updateProduct(index, "quantity", value === "" ? 1 : Number(value))
+                              }}
+                              onBlur={(e) => {
+                                // Al perder el foco, asegurar que sea mínimo 1
+                                const value = Number(e.target.value)
+                                if (value < 1 || isNaN(value)) {
+                                  updateProduct(index, "quantity", 1)
+                                }
                               }}
                               className="mt-1"
                               min="1"
                               step="1"
+                              placeholder="1"
                             />
                           </div>
 
@@ -1088,6 +1094,7 @@ export default function ArepaDeliveryManager() {
           </Card>
         )}
 
+        {/* Contenido principal */}
         {uniqueWeeks.length === 0 ? (
           <Card>
             <CardContent className="text-center py-12">
